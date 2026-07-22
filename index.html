@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Workout Tracker</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0F1115" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-v5.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Workout Tracker" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0F1115;
+    --bg2: #14161C;
+    --card-bg: #171A21;
+    --border: #1E2129;
+    --border2: #262A33;
+    --text: #EDEDF0;
+    --muted: #8A8E99;
+    --muted2: #6B6F7A;
+    --muted3: #4A4E58;
+    --input-bg: #0F1115;
+    --overlay: rgba(0,0,0,0.6);
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+    --bg: #F4F5F7;
+    --bg2: #FFFFFF;
+    --card-bg: #FFFFFF;
+    --border: #E4E6EB;
+    --border2: #D8DBE0;
+    --text: #14161C;
+    --muted: #6B6F7A;
+    --muted2: #8A8E99;
+    --muted3: #A8ADB8;
+    --input-bg: #F0F1F4;
+    --overlay: rgba(20,22,28,0.35);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+  #app { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+  header.topbar {
+    padding: max(20px, env(safe-area-inset-top)) 20px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header.topbar .title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header.topbar button.icon-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer; padding: 6px; display: flex;
+  }
+  header.topbar button.icon-btn svg { width: 22px; height: 22px; }
+  .modal-overlay {
+    position: fixed; inset: 0; background: var(--overlay); z-index: 50;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .modal-sheet {
+    background: var(--card-bg); border: 1px solid var(--border2); border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 480px; padding: 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 14px;
+    max-height: 85vh; max-height: 85dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .modal-sheet h2 { margin: 0; font-size: 17px; font-weight: 700; }
+  .modal-sheet p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .modal-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px; border-radius: 10px; border: none; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; font-family: inherit; width: 100%;
+  }
+  .modal-btn svg { width: 15px; height: 15px; }
+  .modal-btn.primary { background: var(--accent, #2DD4BF); color: #0F1115; }
+  .modal-btn.secondary { background: var(--border); color: var(--text); border: 1px solid var(--border2); }
+  .modal-close { text-align: center; color: var(--muted2); font-size: 13px; padding: 8px; cursor: pointer; }
+  .status-msg { font-size: 13px; text-align: center; padding: 6px; border-radius: 8px; }
+  .status-msg.ok { background: rgba(76,175,125,0.15); color: #4CAF7D; }
+  .status-msg.err { background: rgba(232,131,74,0.15); color: #E8834A; }
+  .backup-banner {
+    background: rgba(45,212,191,0.1); border-bottom: 1px solid rgba(45,212,191,0.25);
+    padding: 12px 20px; display: none; flex-direction: column; gap: 8px;
+  }
+  .backup-banner p { margin: 0; font-size: 13px; color: #1F8A78; line-height: 1.4; }
+  [data-theme="dark"] .backup-banner p, :root:not([data-theme]) .backup-banner p { color: #C9F7F0; }
+  .backup-banner-actions { display: flex; gap: 8px; }
+  .backup-banner-actions button {
+    flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .backup-banner-actions .now-btn { background: #2DD4BF; color: #0F1115; }
+  .backup-banner-actions .later-btn { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+  main#content { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; display: flex; flex-direction: column; gap: 16px; }
+  nav.tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg2); border-top: 1px solid var(--border);
+    display: flex; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  nav.tabbar button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 0; background: none; border: none; color: var(--muted2); cursor: pointer; font-family: inherit;
+  }
+  nav.tabbar svg { width: 22px; height: 22px; }
+  nav.tabbar span { font-size: 11px; font-weight: 500; }
+  nav.tabbar button.active span { font-weight: 700; }
+
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px; }
+  .card-label { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; min-width: 0; }
+  input[type="date"], input[type="number"], input[type="text"] {
+    flex: 1; width: 100%; min-width: 0; background: var(--input-bg); border: 1px solid var(--border2); border-radius: 10px;
+    padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; font-family: inherit;
+  }
+  .btn-primary {
+    background: #2DD4BF; border: none; border-radius: 10px; width: 44px; flex-shrink: 0;
+    color: #0F1115; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .chip {
+    padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--border2); background: transparent;
+    color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .health-divider { border-top: 1px solid var(--border2); margin: 4px 0 14px; position: relative; }
+  .list-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border);
+  }
+  .list-row:last-child { border-bottom: none; }
+  .workout-item { padding: 10px 4px; border-bottom: 1px solid var(--border); }
+  .workout-item:last-child { border-bottom: none; }
+  .workout-note { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 6px; padding-left: 18px; line-height: 1.4; }
+  .delete-btn { background: none; border: none; color: var(--text); opacity: 0.85; cursor: pointer; padding: 4px; flex-shrink: 0; display: flex; align-items: center; }
+  .delete-btn svg { width: 18px; height: 18px; }
+  .btn-primary svg { width: 18px; height: 18px; }
+  .empty { color: var(--muted2); font-size: 13px; padding: 8px 0; text-align: center; }
+  .stat-row { display: flex; gap: 10px; }
+  .stat-card { flex: 1; text-align: center; padding: 14px; }
+  .stat-card .title { font-size: 11px; color: var(--muted2); margin-bottom: 6px; }
+  .stat-card .count { font-size: 22px; font-weight: 700; }
+  .stat-card .unit { font-size: 10px; color: var(--muted2); margin-bottom: 6px; }
+  .stat-card .minutes { font-size: 12px; color: var(--muted); }
+  .legend { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .bar-row { margin-bottom: 10px; }
+  .bar-row-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .bar-track { height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+  .gender-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .gender-btn { flex: 1; padding: 8px 0; border-radius: 20px; border: 1.5px solid var(--border2); background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .field { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .field-label { font-size: 11px; color: var(--muted2); margin-bottom: 4px; }
+  .activity-btn {
+    display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+    padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--border2); background: transparent;
+    cursor: pointer; width: 100%; font-family: inherit; margin-bottom: 6px;
+  }
+  .activity-btn .lbl { font-size: 13px; font-weight: 600; color: var(--text); }
+  .activity-btn .desc { font-size: 11px; color: var(--muted2); }
+  .goal-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+  .goal-label { font-size: 13px; color: var(--muted); }
+  .goal-value { font-size: 15px; font-weight: 700; }
+  .disclaimer { font-size: 11px; color: var(--muted3); text-align: center; padding: 0 8px; }
+  .weight-hero { display: flex; align-items: center; justify-content: space-between; }
+  .weight-hero .value { font-size: 32px; font-weight: 700; }
+  .weight-hero .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .diff { display: flex; align-items: center; gap: 4px; font-size: 14px; }
+  .history-scroll { max-height: 280px; overflow-y: auto; }
+  .chart-wrap { position: relative; height: 200px; width: 100%; }
+  .streak-badge { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #E8834A; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .toggle-switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0; background: var(--border2); border-radius: 999px; cursor: pointer; transition: background .15s;
+  }
+  .toggle-slider::before {
+    content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .15s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--accent, #2DD4BF); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+  .theme-row { display: flex; gap: 8px; }
+  .theme-btn { flex: 1; padding: 8px 0; border-radius: 10px; border: 1.5px solid var(--border2); background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-select {
+    background: var(--input-bg); border: 1px solid var(--border2); border-radius: 10px; color: var(--text);
+    font-size: 13px; padding: 8px 10px; font-family: inherit;
+  }
+  .compare-col { flex: 1; text-align: center; }
+  .compare-col .label { font-size: 11px; color: var(--muted2); margin-bottom: 4px; }
+  .compare-col .val { font-size: 18px; font-weight: 700; }
+  .compare-delta { font-size: 12px; margin-top: 2px; }
+  .icon-20 svg { width: 20px; height: 20px; display: block; }
+  .icon-14 svg { width: 14px; height: 14px; display: block; }
+  .celebration-overlay {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    animation: celebFadeIn .2s ease;
+  }
+  @keyframes celebFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes celebPop {
+    0% { transform: scale(0.7); opacity: 0; }
+    60% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .celebration-card {
+    background: var(--card-bg); border: 1px solid var(--border2); border-radius: 20px;
+    padding: 28px 24px; max-width: 300px; width: 100%; text-align: center;
+    animation: celebPop .35s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  .celebration-icon {
+    width: 68px; height: 68px; border-radius: 50%; border: 2px solid; margin: 0 auto 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .celebration-title { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .celebration-sub { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+  .celebration-achievement { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+  .celebration-xp { font-size: 15px; font-weight: 800; margin-bottom: 16px; }
+  .modal-sheet { overflow-x: hidden; }
+  .undo-toast {
+    position: fixed; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    background: var(--card-bg); border: 1px solid var(--border2); border-radius: 12px;
+    padding: 10px 16px; display: flex; align-items: center; gap: 14px; z-index: 60;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.35); font-size: 13px;
+  }
+  .undo-toast button {
+    background: none; border: none; color: #2DD4BF; font-weight: 700; font-size: 13px;
+    cursor: pointer; font-family: inherit; padding: 2px 4px;
+  }
+  .xp-bump-toast {
+    position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    background: var(--card-bg); border: 1px solid var(--border2); border-radius: 999px;
+    padding: 6px 16px; font-size: 13px; font-weight: 800; z-index: 60;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3); pointer-events: none;
+    animation: xpBumpFade 1.7s ease forwards;
+  }
+  @keyframes xpBumpFade {
+    0% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <span class="title">Workout Tracker</span>
+    <button class="icon-btn" id="settingsBtn" aria-label="Inställningar"></button>
+  </header>
+  <div class="backup-banner" id="backupBanner">
+    <p id="backupBannerText"></p>
+    <div class="backup-banner-actions">
+      <button class="now-btn" id="backupBannerNow">Säkerhetskopiera nu</button>
+      <button class="later-btn" id="backupBannerSnooze">Påminn om 3 dagar</button>
+    </div>
+  </div>
+  <main id="content"></main>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+<div id="modalRoot"></div>
+<input type="file" id="importFileInput" accept="application/json" style="display:none" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
