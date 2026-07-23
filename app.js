@@ -114,6 +114,11 @@ function vibrate(pattern) {
   }
 }
 const MONTHS_SV = ["Jan","Feb","Mar","Apr","Maj","Jun","Jul","Aug","Sep","Okt","Nov","Dec"];
+const WEEKDAYS_SV = ["Söndag","Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag"];
+function fmtDateWithWeekday(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return `${d.getDate()} ${MONTHS_SV[d.getMonth()]}, ${WEEKDAYS_SV[d.getDay()]}`;
+}
 
 const ACTIVITY_LEVELS = [
   { key: "stillasittande", label: "Stillasittande", desc: "Lite eller ingen träning", factor: 1.2 },
@@ -445,6 +450,8 @@ let colorsSectionOpen = false;
 let presetsSectionOpen = false;
 let backupSectionOpen = false;
 let debugSectionOpen = false;
+let debugUnlockedThisSession = false;
+const DEBUG_PIN = "3310";
 let profileModalReturnsToSettings = false;
 
 function loadBeltSectionOpen() {
@@ -724,7 +731,7 @@ function renderVikt() {
       <div class="card-label">${todayEntry ? "Uppdatera dagens vikt" : "Logga dagens vikt"}</div>
       <div class="row">
         <input type="date" id="weightDate" value="${todayISO()}" />
-        <input type="number" inputmode="decimal" step="0.1" placeholder="kg" id="weightValue" style="max-width:90px" />
+        <input type="number" inputmode="decimal" step="0.1" placeholder="kg" id="weightValue" enterkeyhint="go" style="max-width:90px" />
         <button class="btn-primary" id="weightSubmit" style="background:${tabColors.vikt}">${ICONS.plus}</button>
       </div>
     </div>
@@ -762,7 +769,7 @@ function renderVikt() {
         ${weightEntries.length === 0 ? `<div class="empty">Inga inlägg än</div>` : ""}
         ${[...weightEntries].reverse().map((e) => `
           <div class="list-row">
-            <span style="font-size:13px;color:var(--muted);flex:1">${fmtDateShort(e.date)}</span>
+            <span style="font-size:13px;color:var(--muted);flex:1">${fmtDateWithWeekday(e.date)}</span>
             <span style="font-size:14px;font-weight:600">${e.value} kg</span>
             <button class="delete-btn" data-edit-weight="${e.id}">${ICONS.pencil}</button>
             <button class="delete-btn" data-del-weight="${e.id}">${ICONS.trash}</button>
@@ -788,6 +795,12 @@ function renderVikt() {
     checkWeeklyChallenges();
     awardLogXpForDate("weight", date);
     renderVikt();
+  });
+  document.getElementById("weightValue").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("weightSubmit").click();
+    }
   });
 
   content.querySelectorAll("[data-edit-weight]").forEach((btn) => {
@@ -1995,6 +2008,11 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => thisWeekSubmissionIds().includes("scarf_hold_armlock") },
     { id: "sub_two_passes", title: "Två pass med submissions", desc: "Få in submissions på minst 2 olika pass denna vecka.",
       check: () => thisWeekTrainingEntries().filter((e) => e.submissions && e.submissions.length > 0).length >= 2 },
+    { id: "sub_weakest_five", title: "Svagaste länken", desc: "Få in en submission bland dina 5 med lägst träffprocent (som det såg ut när veckan startade).",
+      check: () => {
+        const snapshot = weeklyChallengeState.weakestSubmissionsSnapshot || [];
+        return thisWeekSubmissionIds().some((id) => snapshot.includes(id));
+      } },
   ],
   training: [
     { id: "tr_3pass", title: "3 pass", desc: "Träna minst 3 pass denna vecka.",
@@ -2173,6 +2191,18 @@ function weeklyChallengeXpAmounts() {
   return { perChallenge: 15, bonus: 30 };
 }
 
+function computeWeakestFiveSubmissionIds() {
+  const totalMartial = workoutEntries.filter((e) => e.type === "BJJ" || e.type === "SW").length;
+  const counts = {};
+  workoutEntries.forEach((e) => { (e.submissions || []).forEach((id) => { counts[id] = (counts[id] || 0) + 1; }); });
+  return submissionTypes
+    .filter((s) => s.enabled)
+    .map((s) => ({ id: s.id, pct: totalMartial ? (counts[s.id] || 0) / totalMartial : 0 }))
+    .sort((a, b) => a.pct - b.pct)
+    .slice(0, 5)
+    .map((s) => s.id);
+}
+
 function rollWeeklyChallengesIfNeeded() {
   const currentMonday = mondayOf(todayISO());
   if (weeklyChallengeState.weekStart === currentMonday) return;
@@ -2183,6 +2213,7 @@ function rollWeeklyChallengesIfNeeded() {
     pickOne(WEEKLY_CHALLENGE_POOL.other).id,
   ];
   weeklyChallengeState = { weekStart: currentMonday, ids, completed: [], bonusAwarded: false };
+  if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
 
@@ -2196,6 +2227,7 @@ function startNextWeeklyChallengeEarly() {
   // weekStart stays as-is on purpose: the automatic Monday reroll still fires on schedule,
   // this just gives a fresh set of 3 to chase for whatever's left of the current week.
   weeklyChallengeState = { ...weeklyChallengeState, ids, completed: [], bonusAwarded: false };
+  if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
 
@@ -2648,7 +2680,8 @@ function renderTraning() {
         trimmedNote = trimmedNote ? `${trimmedNote} — ${ratingNote}` : ratingNote;
       }
     }
-    if (gymMenuEnabled && workoutFormState.type === "Gym" && workoutFormState.gymSplit) {
+    const gymSplitTracked = gymMenuEnabled && workoutFormState.type === "Gym" && workoutFormState.gymSplit;
+    if (gymSplitTracked) {
       const split = gymSplits.find((g) => g.id === workoutFormState.gymSplit);
       if (split) {
         trimmedNote = trimmedNote ? `${trimmedNote} — ${split.text}` : split.text;
@@ -2670,6 +2703,7 @@ function renderTraning() {
         if (workoutFormState.type === "Ovrigt") existing.customLabel = trimmedLabel; else delete existing.customLabel;
         if (trimmedNote) existing.note = trimmedNote; else delete existing.note;
         if (submissionsTracked) existing.submissions = [...workoutFormState.submissions]; else delete existing.submissions;
+        if (gymSplitTracked) existing.gymSplit = workoutFormState.gymSplit; else delete existing.gymSplit;
         markWeeklyMiscFlag("workoutEditedWeek");
       }
     } else {
@@ -2677,6 +2711,7 @@ function renderTraning() {
       if (workoutFormState.type === "Ovrigt") entry.customLabel = trimmedLabel;
       if (trimmedNote) entry.note = trimmedNote;
       if (submissionsTracked) entry.submissions = [...workoutFormState.submissions];
+      if (gymSplitTracked) entry.gymSplit = workoutFormState.gymSplit;
       workoutEntries.unshift(entry);
       const autoKcal = parseInt(DEFAULT_KCAL_BURNED[entry.type], 10);
       if (!isNaN(autoKcal) && autoKcal > 0) {
@@ -2834,6 +2869,8 @@ function renderStats() {
     </div>
 
     <div id="submissionStatsCardWrap">${submissionStatsCardHTML()}</div>
+
+    ${gymPassStatsCardHTML()}
 
     <div id="achievementsCardWrap">${achievementsCardHTML()}</div>
 
@@ -3100,6 +3137,38 @@ function wireCalorieDayCardEvents() {
       renderCalorieDayCard();
     });
   }
+}
+
+function gymPassStatsCardHTML() {
+  const gymEntries = workoutEntries.filter((e) => e.type === "Gym");
+  if (!gymEntries.length) return "";
+  const totalGym = gymEntries.length;
+  const counts = {};
+  gymSplits.forEach((g) => { counts[g.id] = 0; });
+  let untagged = 0;
+  gymEntries.forEach((e) => {
+    if (e.gymSplit && counts[e.gymSplit] !== undefined) counts[e.gymSplit]++;
+    else if (e.gymSplit) counts[e.gymSplit] = (counts[e.gymSplit] || 0) + 1;
+    else untagged++;
+  });
+  const rows = gymSplits
+    .map((g) => ({ label: g.text, count: counts[g.id] || 0 }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+  return `
+    <div class="card">
+      <div class="card-label">Gympass <span style="color:var(--muted2);font-weight:600">${totalGym} totalt</span></div>
+      ${gymMenuEnabled && rows.length ? rows.map((row) => `
+        <div class="bar-row">
+          <div class="bar-row-head">
+            <span style="font-weight:600">${escapeHtml(row.label)}</span>
+            <span style="color:var(--muted)">${row.count} ${row.count === 1 ? "gång" : "gånger"}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(row.count / totalGym) * 100}%;background:${tabColors.traning}"></div></div>
+        </div>
+      `).join("") + (untagged ? `<p style="margin-top:6px">${untagged} gympass utan valt fokus.</p>` : "") : ""}
+    </div>
+  `;
 }
 
 function submissionStatsCardHTML() {
@@ -3500,6 +3569,34 @@ function restoreFocus() {
 /* ---------------- Backup / restore (survives clearing browser data) ---------------- */
 
 const modalRoot = document.getElementById("modalRoot");
+
+let suppressNextPopstate = false;
+let respondingToPopstate = false;
+function pushModalHistoryIfNeeded() {
+  if (!modalRoot.dataset.historyPushed) {
+    history.pushState({ modalOpenMarker: true }, "");
+    modalRoot.dataset.historyPushed = "1";
+  }
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".modal-close") && !respondingToPopstate) {
+    delete modalRoot.dataset.historyPushed;
+    if (history.state && history.state.modalOpenMarker) {
+      suppressNextPopstate = true;
+      history.back();
+    }
+  }
+});
+window.addEventListener("popstate", () => {
+  if (suppressNextPopstate) { suppressNextPopstate = false; return; }
+  if (modalRoot.innerHTML.trim()) {
+    respondingToPopstate = true;
+    const closeBtn = modalRoot.querySelector(".modal-close");
+    if (closeBtn) closeBtn.click(); else modalRoot.innerHTML = "";
+    respondingToPopstate = false;
+    delete modalRoot.dataset.historyPushed;
+  }
+});
 const importFileInput = document.getElementById("importFileInput");
 
 function pad(n) { return String(n).padStart(2, "0"); }
@@ -3803,6 +3900,7 @@ function applyAccentVar() {
 }
 
 function openBackupModal() {
+  pushModalHistoryIfNeeded();
   applyAccentVar();
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
@@ -3817,7 +3915,7 @@ function openBackupModal() {
         </div>
         <div class="field-label" style="margin-top:12px">Tema (level & progression)</div>
         <div class="theme-row">
-          <button class="theme-btn" data-level-theme-btn="belt" style="${levelTheme === "belt" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🥋 Bälte</button>
+          <button class="theme-btn" data-level-theme-btn="belt" style="${levelTheme === "belt" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🥋 Kampsport</button>
           <button class="theme-btn" data-level-theme-btn="fitness" style="${levelTheme === "fitness" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🏆 Fitness</button>
         </div>
         <p style="margin-top:-4px">Ändrar bara utseendet på levelbilden och nivånamnen — XP och level fungerar likadant oavsett tema.</p>
@@ -3946,6 +4044,7 @@ function openBackupModal() {
         </div>
         <p style="margin-top:-4px">Testa bälten och nivåer, eller lås upp valfria prestationer manuellt.</p>
         <div id="debugBody" style="display:flex;flex-direction:column;gap:10px;${debugSectionOpen ? "" : "display:none"}">
+          ${debugUnlockedThisSession ? `
           <div style="font-size:12px;font-weight:700;color:var(--muted)">Hoppa till bälte</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
             ${activeTierSet().map((tier) => `<button class="chip" data-debug-belt="${tier.min}">${tier.name} (level ${tier.min})</button>`).join("")}
@@ -3964,6 +4063,14 @@ function openBackupModal() {
 
           <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px">Lås upp/av valfri prestation</div>
           <div id="debugAchievementsList" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+          ` : `
+          <div style="font-size:12px;color:var(--muted)">Debug-läget är låst. Ange PIN-kod för att låsa upp.</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" inputmode="numeric" id="debugPinInput" placeholder="PIN-kod" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;letter-spacing:2px" />
+            <button class="modal-btn primary" id="debugPinSubmitBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Lås upp</button>
+          </div>
+          <div id="debugPinError" style="display:none;color:#E15554;font-size:12px">Fel PIN-kod.</div>
+          `}
         </div>
 
         <div class="modal-close" id="modalCloseBtn">Stäng</div>
@@ -4019,7 +4126,7 @@ function openBackupModal() {
   });
   renderGymSplitsList();
   renderTabOrderList();
-  if (debugSectionOpen) renderDebugAchievementsList();
+  if (debugSectionOpen && debugUnlockedThisSession) renderDebugAchievementsList();
   document.getElementById("tabOrderMenuToggle").addEventListener("change", (e) => {
     tabOrderSectionOpen = e.target.checked;
     document.getElementById("tabOrderList").style.display = tabOrderSectionOpen ? "flex" : "none";
@@ -4039,51 +4146,71 @@ function openBackupModal() {
   document.getElementById("debugMenuToggle").addEventListener("change", (e) => {
     debugSectionOpen = e.target.checked;
     document.getElementById("debugBody").style.display = debugSectionOpen ? "flex" : "none";
-    if (debugSectionOpen) renderDebugAchievementsList();
+    openBackupModal();
   });
-  document.querySelectorAll("[data-debug-belt]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = xpNeededForLevel(parseInt(btn.dataset.debugBelt, 10));
+  const debugPinSubmitBtn = document.getElementById("debugPinSubmitBtn");
+  if (debugPinSubmitBtn) {
+    const tryUnlock = () => {
+      const input = document.getElementById("debugPinInput");
+      if (input.value === DEBUG_PIN) {
+        debugUnlockedThisSession = true;
+        openBackupModal();
+      } else {
+        document.getElementById("debugPinError").style.display = "block";
+        input.value = "";
+        input.focus();
+      }
+    };
+    debugPinSubmitBtn.addEventListener("click", tryUnlock);
+    document.getElementById("debugPinInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") tryUnlock();
+    });
+  }
+  if (debugUnlockedThisSession) {
+    document.querySelectorAll("[data-debug-belt]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = xpNeededForLevel(parseInt(btn.dataset.debugBelt, 10));
+        debugXpOverride = target - (achievementXp() + logXp);
+        saveDebugXpOverride();
+        if (activeTab === "stats") renderStats(); else render();
+        showModalStatus(`Level satt till ${btn.dataset.debugBelt} (debug).`, "ok");
+      });
+    });
+    document.getElementById("debugPlusLevelBtn").addEventListener("click", () => {
+      const currentLevel = computeLevelInfo(totalXp()).level;
+      const target = xpNeededForLevel(currentLevel + 1);
       debugXpOverride = target - (achievementXp() + logXp);
       saveDebugXpOverride();
       if (activeTab === "stats") renderStats(); else render();
-      showModalStatus(`Level satt till ${btn.dataset.debugBelt} (debug).`, "ok");
+      showModalStatus(`Level satt till ${currentLevel + 1} (debug).`, "ok");
     });
-  });
-  document.getElementById("debugPlusLevelBtn").addEventListener("click", () => {
-    const currentLevel = computeLevelInfo(totalXp()).level;
-    const target = xpNeededForLevel(currentLevel + 1);
-    debugXpOverride = target - (achievementXp() + logXp);
-    saveDebugXpOverride();
-    if (activeTab === "stats") renderStats(); else render();
-    showModalStatus(`Level satt till ${currentLevel + 1} (debug).`, "ok");
-  });
-  document.getElementById("debugSetLevelBtn").addEventListener("click", () => {
-    const input = document.getElementById("debugLevelInput");
-    const lvl = parseInt(input.value, 10);
-    if (isNaN(lvl) || lvl < 1) { input.focus(); return; }
-    const target = xpNeededForLevel(lvl);
-    debugXpOverride = target - (achievementXp() + logXp);
-    saveDebugXpOverride();
-    if (activeTab === "stats") renderStats(); else render();
-    showModalStatus(`Level satt till ${lvl} (debug).`, "ok");
-  });
-  document.getElementById("debugSetXpBtn").addEventListener("click", () => {
-    const input = document.getElementById("debugXpInput");
-    const addXp = parseInt(input.value, 10);
-    if (isNaN(addXp)) { input.focus(); return; }
-    debugXpOverride += addXp;
-    saveDebugXpOverride();
-    if (activeTab === "stats") renderStats(); else render();
-    input.value = "";
-    showModalStatus(`+${addXp} XP tillagt (debug), totalt ${totalXp()} XP.`, "ok");
-  });
-  document.getElementById("debugResetXpBtn").addEventListener("click", () => {
-    debugXpOverride = 0;
-    saveDebugXpOverride();
-    if (activeTab === "stats") renderStats(); else render();
-    showModalStatus("Debug-bonus borttagen, riktig XP (prestationer + loggning) används igen.", "ok");
-  });
+    document.getElementById("debugSetLevelBtn").addEventListener("click", () => {
+      const input = document.getElementById("debugLevelInput");
+      const lvl = parseInt(input.value, 10);
+      if (isNaN(lvl) || lvl < 1) { input.focus(); return; }
+      const target = xpNeededForLevel(lvl);
+      debugXpOverride = target - (achievementXp() + logXp);
+      saveDebugXpOverride();
+      if (activeTab === "stats") renderStats(); else render();
+      showModalStatus(`Level satt till ${lvl} (debug).`, "ok");
+    });
+    document.getElementById("debugSetXpBtn").addEventListener("click", () => {
+      const input = document.getElementById("debugXpInput");
+      const addXp = parseInt(input.value, 10);
+      if (isNaN(addXp)) { input.focus(); return; }
+      debugXpOverride += addXp;
+      saveDebugXpOverride();
+      if (activeTab === "stats") renderStats(); else render();
+      input.value = "";
+      showModalStatus(`+${addXp} XP tillagt (debug), totalt ${totalXp()} XP.`, "ok");
+    });
+    document.getElementById("debugResetXpBtn").addEventListener("click", () => {
+      debugXpOverride = 0;
+      saveDebugXpOverride();
+      if (activeTab === "stats") renderStats(); else render();
+      showModalStatus("Debug-bonus borttagen, riktig XP (prestationer + loggning) används igen.", "ok");
+    });
+  }
   document.getElementById("hapticsToggle").addEventListener("change", (e) => {
     hapticsEnabled = e.target.checked;
     saveHaptics();
@@ -4387,6 +4514,7 @@ function renderGymSplitsList() {
 }
 
 function openManageCaloriePresetsModal() {
+  pushModalHistoryIfNeeded();
   applyAccentVar();
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="caloriePresetsModalOverlay">
@@ -4504,6 +4632,7 @@ async function shareBackup(kind) {
 }
 
 function openAboutModal() {
+  pushModalHistoryIfNeeded();
   applyAccentVar();
   const currentMondayForAbout = mondayOf(todayISO());
   if (weeklyMisc.aboutOpenedWeek !== currentMondayForAbout) {
@@ -4550,6 +4679,7 @@ function openAboutModal() {
 }
 
 function openProfileModal() {
+  pushModalHistoryIfNeeded();
   applyAccentVar();
   markWeeklyMiscFlag("profileOpenedWeek");
   if (weightEntries.length) {
@@ -4725,6 +4855,7 @@ function closeBackupModal() {
 let typesModalReturnsToSettings = false;
 
 function openManageTypesModal() {
+  pushModalHistoryIfNeeded();
   applyAccentVar();
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="typesModalOverlay">
@@ -4906,6 +5037,7 @@ function closeTypesModal() {
 /* ---------------- Årskrönika (year in review) ---------------- */
 
 function openYearReviewModal() {
+  pushModalHistoryIfNeeded();
   const currentMondayForYearReview = mondayOf(todayISO());
   if (weeklyMisc.yearReviewOpenedWeek !== currentMondayForYearReview) {
     weeklyMisc.yearReviewOpenedWeek = currentMondayForYearReview;
@@ -4939,6 +5071,14 @@ function openYearReviewModal() {
   const martialMinutes = yearTrainingE.filter(isMartialArts).reduce((s, e) => s + e.minutes, 0);
   const cardioMinutes = yearTrainingE.filter(isCardio).reduce((s, e) => s + e.minutes, 0);
   const gymMinutes = yearTrainingE.filter(isGymType).reduce((s, e) => s + e.minutes, 0);
+
+  const yearGymEntries = yearTrainingE.filter((e) => e.type === "Gym");
+  const yearGymSplitCounts = {};
+  yearGymEntries.forEach((e) => { if (e.gymSplit) yearGymSplitCounts[e.gymSplit] = (yearGymSplitCounts[e.gymSplit] || 0) + 1; });
+  const yearGymSplitRows = gymSplits
+    .map((g) => ({ label: g.text, count: yearGymSplitCounts[g.id] || 0 }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
 
   const sortedByMinutes = [...yearTrainingE].filter((e) => e.minutes > 0).sort((a, b) => a.minutes - b.minutes);
   const shortest = sortedByMinutes[0];
@@ -4980,6 +5120,12 @@ function openYearReviewModal() {
           <div class="goal-row"><span class="goal-label">🏃 Kondition</span><span class="goal-value">${cardioMinutes ? fmtMinutes(cardioMinutes) : "–"}</span></div>
           <div class="goal-row"><span class="goal-label">🏋️ Styrka</span><span class="goal-value">${gymMinutes ? fmtMinutes(gymMinutes) : "–"}</span></div>
         </div>
+        ${yearGymEntries.length ? `
+          <div class="card" style="background:var(--bg)">
+            <div class="card-label" style="margin-bottom:8px">Gympass i år <span style="color:var(--muted2);font-weight:600">${yearGymEntries.length} st</span></div>
+            ${yearGymSplitRows.map((row) => `<div class="goal-row"><span class="goal-label">${escapeHtml(row.label)}</span><span class="goal-value">${row.count} ${row.count === 1 ? "gång" : "gånger"}</span></div>`).join("")}
+          </div>
+        ` : ""}
         <div class="card" style="background:var(--bg)">
           ${topType ? `<div class="goal-row"><span class="goal-label">Vanligaste passet</span><span class="goal-value" style="color:${typeMeta(topType).color}">${typeMeta(topType).label} (${countByType[topType]}×)</span></div>` : ""}
           <div class="goal-row"><span class="goal-label">Bästa veckan</span><span class="goal-value">${peakWeekCount} pass</span></div>
