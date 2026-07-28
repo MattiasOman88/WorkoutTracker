@@ -624,8 +624,64 @@ function wireCollapsibleListToggles(root) {
 }
 let colorsSectionOpen = false;
 let trainingAdvancedSectionOpen = false;
+let kampsportAdvancedSectionOpen = false;
 let viktAdvancedSectionOpen = false;
 let presetsSectionOpen = false;
+
+const DEFAULT_MACRO_SETTINGS = {
+  protein: { enabled: true,
+    green: { mode: "perkg", value: 1.8 },
+    blue: { mode: "perkg", value: 1.5 },
+    orange: { mode: "perkg", value: 1.0 } },
+  fat: { enabled: false,
+    green: { mode: "perkg", value: 1 },
+    blue: { mode: "perkg", value: 0.8 },
+    orange: { mode: "perkg", value: 0.5 } },
+  carbs: { enabled: false,
+    green: { mode: "perkg", value: 4 },
+    blue: { mode: "perkg", value: 3 },
+    orange: { mode: "perkg", value: 2 } },
+};
+function normalizeMacroSetting(key, s) {
+  const def = DEFAULT_MACRO_SETTINGS[key];
+  s = s || {};
+  return {
+    enabled: typeof s.enabled === "boolean" ? s.enabled : def.enabled,
+    green: { ...def.green, ...(s.green || {}) },
+    blue: { ...def.blue, ...(s.blue || {}) },
+    orange: { ...def.orange, ...(s.orange || {}) },
+  };
+}
+function loadMacroSettings() {
+  try {
+    const raw = localStorage.getItem("macro_settings_v1");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return { protein: normalizeMacroSetting("protein", parsed.protein),
+          fat: normalizeMacroSetting("fat", parsed.fat),
+          carbs: normalizeMacroSetting("carbs", parsed.carbs) };
+      }
+    }
+  } catch (e) { /* fall through */ }
+  return JSON.parse(JSON.stringify(DEFAULT_MACRO_SETTINGS));
+}
+function saveMacroSettings() {
+  try { localStorage.setItem("macro_settings_v1", JSON.stringify(macroSettings)); } catch (e) { /* ignore */ }
+}
+let macroSettings = loadMacroSettings();
+function macroColorFor(macroKey, grams, bodyweightKg) {
+  const setting = macroSettings[macroKey];
+  if (!setting || !setting.enabled) return "var(--text)";
+  const levelValue = (level) => (level.mode === "perkg" ? (bodyweightKg ? grams / bodyweightKg : null) : grams);
+  const greenVal = levelValue(setting.green);
+  const blueVal = levelValue(setting.blue);
+  const orangeVal = levelValue(setting.orange);
+  if (greenVal != null && greenVal >= setting.green.value) return "#4CAF7D";
+  if (blueVal != null && blueVal >= setting.blue.value) return "#4A90D9";
+  if (orangeVal != null && orangeVal >= setting.orange.value) return "#E8834A";
+  return "#E15554";
+}
 let backupSectionOpen = false;
 let debugSectionOpen = false;
 let debugUnlockedThisSession = false;
@@ -943,6 +999,162 @@ let bodyMeasurements = loadBodyMeasurements();
 let activeBodyMeasurementTab = (bodyMeasurementTypes.find((t) => t.enabled) || {}).id || null;
 let bodyMeasurementsExpanded = true;
 let gymSplits = loadGymSplits();
+
+/* ---------------- Gympass — övningar och pågående pass ---------------- */
+
+const DEFAULT_GYM_EXERCISES = {
+  pass1: [
+    { id: "ex_hantelpress", name: "Hantelpress", enabled: true },
+    { id: "ex_cablecross", name: "Cable Cross", enabled: true },
+    { id: "ex_flies", name: "Flies", enabled: true },
+    { id: "ex_bakaxlar", name: "Baksida axlar", enabled: true },
+    { id: "ex_hantellyft_sida", name: "Hantellyft åt sidan", enabled: true },
+    { id: "ex_pushdown_stang", name: "Pushdowns Stång", enabled: true },
+    { id: "ex_pushdown_rep", name: "Pushdowns Rep", enabled: true },
+  ],
+  pass2: [
+    { id: "ex_roddmaskin", name: "Roddmaskin", enabled: true },
+    { id: "ex_latsdrag_stang", name: "Latsdrag Stång", enabled: true },
+    { id: "ex_latsdrag_v", name: "Latsdrag V", enabled: true },
+    { id: "ex_rodd", name: "Rodd", enabled: true },
+    { id: "ex_pullover_cc", name: "Pullover CC", enabled: true },
+    { id: "ex_stangcurl", name: "Stångcurl", enabled: true },
+    { id: "ex_bicepscurl_cc", name: "Bicepscurl CC", enabled: true },
+    { id: "ex_hantelcurl", name: "Hantelcurl", enabled: true },
+    { id: "ex_hammercurl", name: "Hammercurl", enabled: true },
+  ],
+  pass3: [
+    { id: "ex_benbojmaskin", name: "Benböj maskin", enabled: true },
+    { id: "ex_benspark", name: "Benspark", enabled: true },
+    { id: "ex_bencurl", name: "Bencurl", enabled: true },
+    { id: "ex_vadpress", name: "Vadpress", enabled: true },
+  ],
+};
+function normalizeGymExercise(ex) {
+  return { defaultSets: 3, defaultReps: 12, ...ex };
+}
+function loadGymExercises() {
+  let data;
+  try {
+    const raw = localStorage.getItem("gym_exercises_v1");
+    if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === "object") data = parsed; }
+  } catch (e) { /* fall through */ }
+  if (!data) data = JSON.parse(JSON.stringify(DEFAULT_GYM_EXERCISES));
+  Object.keys(data).forEach((splitId) => { data[splitId] = data[splitId].map(normalizeGymExercise); });
+  return data;
+}
+function saveGymExercises() {
+  try { localStorage.setItem("gym_exercises_v1", JSON.stringify(gymExercises)); } catch (e) { /* ignore */ }
+}
+let gymExercises = loadGymExercises();
+function exercisesForSplit(splitId) {
+  return gymExercises[splitId] || [];
+}
+
+function loadActiveGymSession() {
+  try {
+    const raw = localStorage.getItem("active_gym_session_v1");
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* fall through */ }
+  return null;
+}
+function saveActiveGymSession() {
+  try {
+    if (activeGymSession) localStorage.setItem("active_gym_session_v1", JSON.stringify(activeGymSession));
+    else localStorage.removeItem("active_gym_session_v1");
+  } catch (e) { /* ignore */ }
+}
+let activeGymSession = loadActiveGymSession();
+let gymSessionViewOpen = false;
+
+function loadGymSessionHistory() {
+  try {
+    const raw = localStorage.getItem("gym_session_history_v1");
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; }
+  } catch (e) { /* fall through */ }
+  return [];
+}
+function saveGymSessionHistory() {
+  try { localStorage.setItem("gym_session_history_v1", JSON.stringify(gymSessionHistory)); } catch (e) { /* ignore */ }
+}
+let gymSessionHistory = loadGymSessionHistory();
+
+function lastSessionForSplit(splitId) {
+  for (let i = gymSessionHistory.length - 1; i >= 0; i--) {
+    if (gymSessionHistory[i].splitId === splitId) return gymSessionHistory[i];
+  }
+  return null;
+}
+function bestSetForExercise(exerciseName) {
+  let best = null;
+  gymSessionHistory.forEach((session) => {
+    const ex = session.exercises.find((e) => e.name === exerciseName);
+    if (!ex) return;
+    ex.sets.forEach((s) => {
+      if (s && s.weight != null && (!best || s.weight > best.weight)) best = { weight: s.weight, reps: s.reps };
+    });
+  });
+  return best;
+}
+
+function startGymSession(splitId) {
+  const exercises = exercisesForSplit(splitId).filter((e) => e.enabled).map((e) => {
+    const setCount = e.defaultSets || 3;
+    const reps = e.defaultReps != null ? e.defaultReps : 12;
+    return {
+      exerciseId: e.id,
+      name: e.name,
+      sets: Array.from({ length: setCount }, () => ({ weight: null, reps })),
+    };
+  });
+  activeGymSession = {
+    id: uid(),
+    splitId,
+    date: todayISO(),
+    startedAt: new Date().toISOString(),
+    exercises,
+  };
+  saveActiveGymSession();
+  gymSessionViewOpen = true;
+}
+
+function finishGymSession(minutes) {
+  if (!activeGymSession) return;
+  const splitLabel = (gymSplits.find((g) => g.id === activeGymSession.splitId) || {}).text || "";
+  const totalVolume = activeGymSession.exercises.reduce((sum, ex) =>
+    sum + ex.sets.reduce((s, set) => s + (set.weight != null && set.reps != null ? set.weight * set.reps : 0), 0), 0);
+  const summaryLines = activeGymSession.exercises.map((ex) => {
+    const sets = ex.sets.map((s) => (s.weight != null ? `${s.weight}kg×${s.reps != null ? s.reps : "?"}` : "–")).join(", ");
+    return `${ex.name}: ${sets}`;
+  });
+  if (totalVolume > 0) summaryLines.push(`Totalvikt lyft: ${Math.round(totalVolume).toLocaleString("sv-SE")} kg`);
+  workoutEntries.unshift({
+    id: uid(),
+    date: activeGymSession.date,
+    type: "Gym",
+    minutes,
+    gymSplit: activeGymSession.splitId,
+    note: summaryLines.join("\n"),
+  });
+  persistWorkouts();
+  gymSessionHistory.push({
+    id: activeGymSession.id,
+    splitId: activeGymSession.splitId,
+    date: activeGymSession.date,
+    totalVolume,
+    exercises: activeGymSession.exercises.map((ex) => ({ name: ex.name, sets: ex.sets.map((s) => ({ weight: s.weight, reps: s.reps })) })),
+  });
+  saveGymSessionHistory();
+  activeGymSession = null;
+  saveActiveGymSession();
+  gymSessionViewOpen = false;
+  vibrate();
+  checkAchievements();
+  checkWeeklyChallenges();
+  awardLogXpForDate("training", workoutEntries[0].date);
+  markWeeklyMiscFlag("workoutEditedWeek");
+  return totalVolume;
+}
 
 /* ---------------- Nav ---------------- */
 
@@ -1517,6 +1729,25 @@ function maxSessionsInAnyMonth(entries) {
   const counts = {};
   entries.forEach((e) => { const mo = e.date.slice(0, 7); counts[mo] = (counts[mo] || 0) + 1; });
   return Math.max(0, ...Object.values(counts));
+}
+function gymSplitTextIncludes(entry, keyword) {
+  if (!entry.gymSplit) return false;
+  const split = gymSplits.find((g) => g.id === entry.gymSplit);
+  return !!(split && split.text.toLowerCase().includes(keyword));
+}
+function hasFullBodyWeek() {
+  const weeks = {};
+  workoutEntries.filter((e) => e.type === "Gym" && e.gymSplit).forEach((e) => {
+    const monday = mondayOf(e.date);
+    if (!weeks[monday]) weeks[monday] = new Set();
+    const split = gymSplits.find((g) => g.id === e.gymSplit);
+    if (!split) return;
+    const text = split.text.toLowerCase();
+    if (text.includes("bröst")) weeks[monday].add("brost");
+    if (text.includes("rygg")) weeks[monday].add("rygg");
+    if (text.includes("ben")) weeks[monday].add("ben");
+  });
+  return Object.values(weeks).some((s) => s.size >= 3);
 }
 function hasConsecutiveWeeksWithMin(entries, weeksNeeded, minPerWeek) {
   // Finds the longest run of consecutive ISO weeks that each have >= minPerWeek sessions.
@@ -2117,6 +2348,8 @@ const ACHIEVEMENTS = [
       });
       return Object.values(counts).some((c) => c.martial >= 10 && c.gym >= 10);
     } },
+  { id: "helkropp", title: "Helkropp", desc: "Tränat alla tre gympass (Bröst/Triceps/Axlar, Rygg/Biceps och Ben) under samma vecka.", icon: "puzzle", xp: 100,
+    check: () => hasFullBodyWeek() },
   { id: "month_cardio_5", title: "5 konditionspass på en månad", desc: "Tränat minst 5 konditionspass under samma månad.", icon: "battery", xp: 150,
     check: () => maxSessionsInAnyMonthByType(isCardio) >= 5 },
   { id: "month_cardio_10", title: "10 konditionspass på en månad", desc: "Tränat minst 10 konditionspass under samma månad.", icon: "comet", xp: 350,
@@ -2720,8 +2953,6 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => thisWeekTrainingEntries().filter(isCardio).reduce((s, e) => s + e.minutes, 0) >= 60 },
     { id: "tr_gym_and_cardio", title: "Styrka + kondition", desc: "Träna minst ett styrkepass och ett konditionspass denna vecka.",
       check: () => { const w = thisWeekTrainingEntries(); return w.some(isGymType) && w.some(isCardio); } },
-    { id: "tr_5pass", title: "5 pass", desc: "Träna minst 5 pass denna vecka.",
-      check: () => thisWeekTrainingEntries().length >= 5 },
     { id: "tr_doubleday", title: "Dubbelpass", desc: "Träna två pass samma dag denna vecka.",
       check: () => {
         const counts = {};
@@ -2732,8 +2963,6 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => thisWeekTrainingEntries().filter(isMartialArts).length >= 2 },
     { id: "tr_120min", title: "2 timmar totalt", desc: "Samla minst 120 minuters träning denna vecka.",
       check: () => thisWeekTrainingEntries().reduce((s, e) => s + e.minutes, 0) >= 120 },
-    { id: "tr_streak3", title: "3 dagar i rad", desc: "Träna 3 dagar i rad någon gång denna vecka.",
-      check: () => longestConsecutiveRun(thisWeekTrainingEntries().map((e) => e.date)) >= 3 },
     { id: "tr_cardio_x2", title: "Kondition x2", desc: "Träna minst 2 konditionspass denna vecka.",
       check: () => thisWeekTrainingEntries().filter(isCardio).length >= 2 },
     { id: "tr_gym_x2", title: "Styrka x2", desc: "Träna minst 2 styrkepass denna vecka.",
@@ -2760,14 +2989,19 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => thisWeekTrainingEntries().some((e) => e.note && e.note.trim().length > 0 && e.ratings && Object.keys(e.ratings).length > 0) },
     { id: "tr_distance", title: "Distanspass", desc: "Logga ett träningspass med distans ifyllt denna vecka.",
       check: () => thisWeekTrainingEntries().some((e) => e.note && /\d+([.,]\d+)?\s*km/.test(e.note)) },
-    { id: "tr_active_4days", title: "Aktiv 4 dagar", desc: "Träna minst 4 olika dagar denna vecka.",
-      check: () => new Set(thisWeekTrainingEntries().map((e) => e.date)).size >= 4 },
     { id: "tr_short", title: "Kort och snabbt", desc: "Logga ett pass under 30 minuter denna vecka.",
       check: () => thisWeekTrainingEntries().some((e) => e.minutes > 0 && e.minutes < 30) },
-    { id: "tr_long", title: "Långpass", desc: "Logga ett pass över 90 minuter denna vecka.",
-      check: () => thisWeekTrainingEntries().some((e) => e.minutes > 90) },
+    { id: "tr_long", title: "Långpass", desc: "Logga ett pass över 60 minuter denna vecka.",
+      check: () => thisWeekTrainingEntries().some((e) => e.minutes > 60) },
     { id: "tr_variety2", title: "Blandat", desc: "Träna minst 2 olika träningstyper denna vecka.",
       check: () => new Set(thisWeekTrainingEntries().map((e) => e.type)).size >= 2 },
+    { id: "tr_leg_day", title: "Bendagen", desc: "Träna ett benpass denna vecka.",
+      check: () => thisWeekTrainingEntries().some((e) => e.type === "Gym" && gymSplitTextIncludes(e, "ben")) },
+    { id: "tr_chest_back", title: "Bröst och rygg", desc: "Träna både bröst och rygg denna vecka.",
+      check: () => {
+        const w = thisWeekTrainingEntries().filter((e) => e.type === "Gym");
+        return w.some((e) => gymSplitTextIncludes(e, "bröst")) && w.some((e) => gymSplitTextIncludes(e, "rygg"));
+      } },
   ],
   other: [
     { id: "ot_calorie_log", title: "Logga kalorier", desc: "Logga kalorier minst en gång denna vecka.",
@@ -2822,6 +3056,10 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => new Set(weightEntries.filter((e) => isDateInThisWeek(e.date)).map((e) => e.date)).size >= 2 },
     { id: "ot_switch_level_theme", title: "Testa ett nytt tema", desc: "Byt till Fitness-temat (eller tillbaka till Bälte) under Inställningar.",
       check: () => weeklyMisc.levelThemeChangedWeek === mondayOf(todayISO()) },
+    { id: "ot_icon_size", title: "Testa ikonstorlek", desc: "Byt mellan mindre och större ikoner i flikraden under Inställningar.",
+      check: () => weeklyMisc.iconSizeChangedWeek === mondayOf(todayISO()) },
+    { id: "ot_badge_color", title: "Ny bakgrundsfärg", desc: "Byt bakgrundsfärgen bakom flik-bilderna under Inställningar.",
+      check: () => weeklyMisc.badgeColorChangedWeek === mondayOf(todayISO()) },
     { id: "ot_edit_pass_other", title: "Redigera ett pass", desc: "Redigera ett redan loggat träningspass denna vecka.",
       check: () => weeklyMisc.workoutEditedWeek === mondayOf(todayISO()) },
     { id: "ot_open_profile", title: "Kolla din profil", desc: "Öppna din profil denna vecka.",
@@ -2856,6 +3094,7 @@ function loadWeeklyMisc() {
     tabColorChangedWeek: null, calorieGoalSetWeek: null, themeChangedWeek: null,
     achievementsExploredWeek: null, backupExportedWeek: null, newPresetAddedWeek: null,
     levelThemeChangedWeek: null, workoutEditedWeek: null, profileOpenedWeek: null,
+    iconSizeChangedWeek: null, badgeColorChangedWeek: null,
   };
 }
 function saveWeeklyMisc() {
@@ -2980,7 +3219,7 @@ const ACHIEVEMENT_CATEGORIES = [
   { label: "Träningstid", ids: ["hours_10", "hours_week_5", "hours_25", "hours_week_10", "hours_50", "hours_cardio_5", "hours_100", "hours_month_25", "hours_gym_25", "hours_martial_25", "hours_martial_50", "hours_gym_50", "hours_250", "hours_500", "hours_750", "hours_1000", "hours_1500", "hours_2000"] },
   { label: "Dubbelpass", ids: ["double_day", "double_day_2inweek", "double_day_5", "double_day_10", "double_day_weekend", "double_day_5inmonth", "double_day_25", "double_day_streak2", "double_day_3inweek", "double_day_50", "double_day_75", "double_day_100"] },
   { label: "Streaks", ids: ["streak_3", "streak_5", "streak_7", "streak_10", "streak_15", "streak_20", "streak_25", "streak_30", "streak_35", "streak_40"] },
-  { label: "Vecko- och månadsmål", ids: ["week_3", "week_5", "week_7", "week_10", "week_15", "week_all_three", "month_gym_10", "month_cardio_5", "month_15", "month_20", "month_cardio_10", "month_gym_20", "month_martial_15", "month_25", "month_all_three", "month_martial_gym_combo", "month_30", "month_35", "month_martial_25", "martial_3x3weeks", "martial_3x4weeks", "gym_3x4weeks", "month_40"] },
+  { label: "Vecko- och månadsmål", ids: ["week_3", "week_5", "week_7", "week_10", "week_15", "week_all_three", "month_gym_10", "month_cardio_5", "month_15", "month_20", "month_cardio_10", "month_gym_20", "month_martial_15", "month_25", "month_all_three", "month_martial_gym_combo", "helkropp", "month_30", "month_35", "month_martial_25", "martial_3x3weeks", "martial_3x4weeks", "gym_3x4weeks", "month_40"] },
   { label: "Pass under året", ids: ["year_25", "year_50", "year_100", "year_150", "year_200", "year_250", "year_300", "year_gym_50", "year_combo_25", "year_combo_50", "year_combo_100"] },
   { label: "Viktprestationer", ids: ["weight_first", "weight_week", "weight_month", "weight_90days", "weight_6months", "weight_9months", "weight_year", "weight_50", "weight_100", "weight_150", "weight_250", "weight_500", "weight_weekly_3months", "weight_weekly_6months", "weight_weekly_9months", "weight_weekly_12months"] },
   { label: "Kondition", ids: ["cardio_first", "cardio_10", "jogging_5", "cardio_25", "loparen", "jogging_10", "cyklisten", "cardio_50", "jogging_25", "cardio_streak_3w", "cyklisten_50", "cardio_streak_4w", "cardio_100", "cardio_streak_5w", "cardio_150"] },
@@ -3056,12 +3295,63 @@ function wireAchievementsCardEvents() {
     const id = el.dataset.achievementId;
     if (!unlockedAchievements.includes(id)) return;
     el.addEventListener("click", () => {
-      const a = ACHIEVEMENTS.find((x) => x.id === id);
-      const date = unlockedAchievementDates[id];
-      const dateText = date ? fmtDateShort(date) : "okänt datum (upplåst innan detta sparades)";
-      showInfoToast(`🔓 ${a.title} — upplåst ${dateText}`);
+      openForgetAchievementModal(id);
     });
   });
+}
+
+function openForgetAchievementModal(id, confirming) {
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) return;
+  pushModalHistoryIfNeeded();
+  const date = unlockedAchievementDates[id];
+  const dateText = date ? fmtDateShort(date) : "okänt datum (upplåst innan detta sparades)";
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="forgetAchievementOverlay">
+      <div class="modal-sheet">
+        <h2>🔓 ${escapeHtml(a.title)}</h2>
+        <p>Upplåst ${dateText} — ${a.xp} XP.</p>
+        ${confirming ? `
+          <p style="font-weight:700">Är du säker på att du vill glömma prestationen?</p>
+          <p style="font-size:12px;color:var(--muted)">Det går inte att ångra — prestationen och dess ${a.xp} XP tas bort permanent.</p>
+          <div class="row">
+            <button class="modal-btn secondary" id="forgetAchievementCancelBtn" style="flex:1">Avbryt</button>
+            <button class="modal-btn primary" id="forgetAchievementFinalBtn" style="flex:1">Ja, glöm den</button>
+          </div>
+        ` : `
+          <p>Om du fick den av misstag (t.ex. en felloggning) kan du glömma den här. Det tar bort prestationen och dess XP.</p>
+          <p style="font-size:12px;color:var(--muted)">Obs: om det som utlöste den fortfarande finns kvar i din logg kan den låsas upp igen automatiskt. Rätta gärna felloggningen först.</p>
+          <button class="modal-btn secondary" id="forgetAchievementConfirmBtn" style="width:100%">Glöm prestationen (−${a.xp} XP)</button>
+          <div class="modal-close" id="forgetAchievementCloseBtn">Avbryt</div>
+        `}
+      </div>
+    </div>
+  `;
+  const closeBtn = document.getElementById("forgetAchievementCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", () => { modalRoot.innerHTML = ""; });
+  const cancelBtn = document.getElementById("forgetAchievementCancelBtn");
+  if (cancelBtn) cancelBtn.addEventListener("click", () => { modalRoot.innerHTML = ""; handleModalClosedByUser(); });
+  document.getElementById("forgetAchievementOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "forgetAchievementOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+  const confirmBtn = document.getElementById("forgetAchievementConfirmBtn");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+      openForgetAchievementModal(id, true);
+    });
+  }
+  const finalBtn = document.getElementById("forgetAchievementFinalBtn");
+  if (finalBtn) {
+    finalBtn.addEventListener("click", () => {
+      unlockedAchievements = unlockedAchievements.filter((x) => x !== id);
+      delete unlockedAchievementDates[id];
+      saveUnlockedAchievements();
+      saveUnlockedAchievementDates();
+      modalRoot.innerHTML = "";
+      handleModalClosedByUser();
+      if (activeTab === "stats") renderStats();
+    });
+  }
 }
 
 function renderAchievementsCard() {
@@ -3370,10 +3660,194 @@ function wireSenastePassenCardEvents() {
   });
 }
 
+function gymSessionViewHTML() {
+  const s = activeGymSession;
+  const splitLabel = (gymSplits.find((g) => g.id === s.splitId) || {}).text || "";
+  const lastSession = lastSessionForSplit(s.splitId);
+  const availableToAdd = exercisesForSplit(s.splitId).filter((e) => e.enabled && !s.exercises.some((ex) => ex.exerciseId === e.id));
+  return `
+    <div class="card" style="background:${tabColors.traning}1A;border-color:${tabColors.traning}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="card-label" style="margin-bottom:0">🏋️ ${escapeHtml(splitLabel)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDateWithWeekday(s.date)}</div>
+        </div>
+        <button class="modal-btn secondary" id="pauseGymSessionBtn" style="width:auto;padding:9px 16px">⏸️ Pausa</button>
+      </div>
+    </div>
+
+    ${s.exercises.map((ex, exIdx) => {
+      const lastEx = lastSession ? lastSession.exercises.find((le) => le.name === ex.name) : null;
+      const best = bestSetForExercise(ex.name);
+      return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-weight:700;font-size:14px">${escapeHtml(ex.name)}</div>
+          <button class="delete-btn" data-remove-exercise="${exIdx}">${ICONS.trash}</button>
+        </div>
+        ${lastEx ? `<div style="font-size:11.5px;color:var(--muted2)">Förra gången: ${lastEx.sets.map((s) => (s && s.weight != null ? `${s.weight}kg×${s.reps != null ? s.reps : "?"}` : "–")).join(", ")}</div>` : ""}
+        ${best ? `<div style="font-size:11.5px;color:${tabColors.traning};margin-bottom:10px">🏆 Bästa: ${best.weight}kg${best.reps != null ? `×${best.reps}` : ""}</div>` : `<div style="margin-bottom:10px"></div>`}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;padding-left:44px">
+          <span style="flex:1;text-align:center;font-size:10.5px;color:var(--muted2)">Kg</span>
+          <span style="flex:1;text-align:center;font-size:10.5px;color:var(--muted2)">Reps</span>
+          <span style="width:30px;flex-shrink:0"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${ex.sets.map((set, setIdx) => `
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:12px;color:var(--muted2);width:36px;flex-shrink:0">Set ${setIdx + 1}</span>
+              <input type="number" inputmode="decimal" step="0.5" placeholder="kg" value="${set.weight != null ? set.weight : ""}" data-set-weight="${exIdx}:${setIdx}" enterkeyhint="done" style="flex:1;min-width:0;text-align:center" />
+              <input type="number" inputmode="numeric" placeholder="reps" value="${set.reps != null ? set.reps : ""}" data-set-reps="${exIdx}:${setIdx}" enterkeyhint="done" style="flex:1;min-width:0;text-align:center" />
+            </div>
+          `).join("")}
+        </div>
+        <button class="chip" data-add-set="${exIdx}" style="margin-top:10px">+ Set</button>
+      </div>
+    `;
+    }).join("")}
+
+    <div class="card">
+      <div class="card-label">Lägg till övning</div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        ${availableToAdd.map((e) => `<button class="chip" data-add-exercise="${e.id}">${escapeHtml(e.name)}</button>`).join("") || `<span style="font-size:12.5px;color:var(--muted)">Alla ordinarie övningar är redan tillagda.</span>`}
+      </div>
+      <div class="row">
+        <input type="text" id="customExerciseInput" placeholder="Egen övning" enterkeyhint="go" style="flex:1;min-width:0" />
+        <button class="btn-primary" id="addCustomExerciseBtn" style="background:${tabColors.traning}">${ICONS.plus}</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Avsluta passet</div>
+      <div class="row" style="align-items:center">
+        <input type="number" inputmode="numeric" id="gymSessionMinutes" placeholder="Minuter" value="${DEFAULT_MINUTES.Gym || 60}" style="max-width:100px" />
+        <span style="font-size:13px;color:var(--muted)">minuter</span>
+      </div>
+      <button class="modal-btn primary" id="finishGymSessionBtn" style="width:100%;margin-top:12px">✅ Avsluta pass</button>
+    </div>
+
+    <div class="disclaimer">Copyright 2026 Mattias Öman</div>
+  `;
+}
+function wireGymSessionViewEvents() {
+  const pauseBtn = document.getElementById("pauseGymSessionBtn");
+  if (pauseBtn) {
+    pauseBtn.addEventListener("click", () => {
+      gymSessionViewOpen = false;
+      renderTraning();
+    });
+  }
+  content.querySelectorAll("[data-set-weight]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [exIdx, setIdx] = input.dataset.setWeight.split(":").map(Number);
+      const val = parseFloat(e.target.value.replace(",", "."));
+      activeGymSession.exercises[exIdx].sets[setIdx].weight = isNaN(val) ? null : val;
+      saveActiveGymSession();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const [exIdx, setIdx] = input.dataset.setWeight.split(":").map(Number);
+      const repsInput = content.querySelector(`[data-set-reps="${exIdx}:${setIdx}"]`);
+      if (repsInput) repsInput.focus(); else input.blur();
+    });
+  });
+  content.querySelectorAll("[data-set-reps]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [exIdx, setIdx] = input.dataset.setReps.split(":").map(Number);
+      const val = parseInt(e.target.value, 10);
+      activeGymSession.exercises[exIdx].sets[setIdx].reps = isNaN(val) ? null : val;
+      saveActiveGymSession();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const allWeightInputs = [...content.querySelectorAll("[data-set-weight]")];
+      const [exIdx, setIdx] = input.dataset.setReps.split(":").map(Number);
+      const currentWeightInput = content.querySelector(`[data-set-weight="${exIdx}:${setIdx}"]`);
+      const currentPos = allWeightInputs.indexOf(currentWeightInput);
+      const next = allWeightInputs[currentPos + 1];
+      if (next) next.focus(); else input.blur();
+    });
+  });
+  content.querySelectorAll("[data-add-set]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const exIdx = parseInt(btn.dataset.addSet, 10);
+      const ex = activeGymSession.exercises[exIdx];
+      const lastReps = ex.sets.length ? ex.sets[ex.sets.length - 1].reps : 12;
+      ex.sets.push({ weight: null, reps: lastReps != null ? lastReps : 12 });
+      saveActiveGymSession();
+      renderTraning();
+    });
+  });
+  content.querySelectorAll("[data-remove-exercise]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const exIdx = parseInt(btn.dataset.removeExercise, 10);
+      activeGymSession.exercises.splice(exIdx, 1);
+      saveActiveGymSession();
+      renderTraning();
+    });
+  });
+  content.querySelectorAll("[data-add-exercise]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const exDef = exercisesForSplit(activeGymSession.splitId).find((e) => e.id === btn.dataset.addExercise);
+      if (!exDef) return;
+      const setCount = exDef.defaultSets || 3;
+      const reps = exDef.defaultReps != null ? exDef.defaultReps : 12;
+      activeGymSession.exercises.push({ exerciseId: exDef.id, name: exDef.name, sets: Array.from({ length: setCount }, () => ({ weight: null, reps })) });
+      saveActiveGymSession();
+      renderTraning();
+    });
+  });
+  const addCustomBtn = document.getElementById("addCustomExerciseBtn");
+  if (addCustomBtn) {
+    addCustomBtn.addEventListener("click", () => {
+      const input = document.getElementById("customExerciseInput");
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      activeGymSession.exercises.push({ exerciseId: null, name, sets: [{ weight: null, reps: 12 }, { weight: null, reps: 12 }, { weight: null, reps: 12 }] });
+      saveActiveGymSession();
+      renderTraning();
+    });
+    document.getElementById("customExerciseInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addCustomBtn.click(); }
+    });
+  }
+  const finishBtn = document.getElementById("finishGymSessionBtn");
+  if (finishBtn) {
+    finishBtn.addEventListener("click", () => {
+      const minutesInput = document.getElementById("gymSessionMinutes");
+      const minutes = parseInt(minutesInput.value, 10);
+      if (isNaN(minutes) || minutes <= 0) { minutesInput.focus(); return; }
+      const totalVolume = finishGymSession(minutes);
+      renderTraning();
+      if (totalVolume > 0) {
+        showInfoToast(`💪 Du lyfte totalt ${Math.round(totalVolume).toLocaleString("sv-SE")} kg denna gång!`);
+      }
+    });
+  }
+}
+
 function renderTraning() {
+  if (gymSessionViewOpen && activeGymSession) {
+    content.innerHTML = gymSessionViewHTML();
+    wireGymSessionViewEvents();
+    return;
+  }
   const isHealthType = workoutFormState.type === "Sjuk" || workoutFormState.type === "Skadad";
   const streak = computeStreak();
   content.innerHTML = `
+    ${activeGymSession ? `
+    <div class="card" style="background:${tabColors.traning}1A;border-color:${tabColors.traning}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:14px">⏸️ Pass pausat</div>
+          <div style="font-size:12.5px;color:var(--muted)">${escapeHtml((gymSplits.find((g) => g.id === activeGymSession.splitId) || {}).text || "")}</div>
+        </div>
+        <button class="modal-btn primary" id="resumeGymSessionBtn" style="width:auto;padding:9px 16px">▶️ Fortsätt</button>
+      </div>
+    </div>
+    ` : ""}
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div class="card-label" style="margin-bottom:0">${workoutFormState.editingId ? "Redigerar pass" : "Träningspass"}</div>
@@ -3467,6 +3941,9 @@ function renderTraning() {
           <button class="chip" data-gym-split="${g.id}" style="${workoutFormState.gymSplit === g.id ? `border-color:${tabColors.traning};background:${tabColors.traning}26;color:${tabColors.traning}` : ""}">${escapeHtml(g.text)}</button>
         `).join("")}
       </div>
+      ${workoutFormState.gymSplit && !activeGymSession ? `
+        <button class="modal-btn secondary" id="startGymSessionBtn" style="width:100%;margin-top:12px">▶️ Starta pass — logga varje övning</button>
+      ` : ""}
     </div>
     ` : ""}
 
@@ -3597,6 +4074,20 @@ function renderTraning() {
       renderTraning();
     });
   });
+  const startGymSessionBtn = document.getElementById("startGymSessionBtn");
+  if (startGymSessionBtn) {
+    startGymSessionBtn.addEventListener("click", () => {
+      startGymSession(workoutFormState.gymSplit);
+      renderTraning();
+    });
+  }
+  const resumeGymSessionBtn = document.getElementById("resumeGymSessionBtn");
+  if (resumeGymSessionBtn) {
+    resumeGymSessionBtn.addEventListener("click", () => {
+      gymSessionViewOpen = true;
+      renderTraning();
+    });
+  }
   const pbToggle = document.getElementById("pbSectionToggle");
   if (pbToggle) {
     pbToggle.addEventListener("click", () => {
@@ -4407,6 +4898,542 @@ function computeCalorieGoal() {
 
 let calorieLogDate = todayISO();
 
+function loadShowFoodSearch() {
+  try {
+    const raw = localStorage.getItem("show_food_search_v1");
+    return raw === null ? true : raw === "true";
+  } catch (e) { return true; }
+}
+function saveShowFoodSearch() {
+  try { localStorage.setItem("show_food_search_v1", String(showFoodSearch)); } catch (e) { /* ignore */ }
+}
+let showFoodSearch = loadShowFoodSearch();
+let aboutModalReturnScrollTop = 0;
+let profileModalReturnScrollTop = 0;
+let typesModalReturnScrollTop = 0;
+let foodSearchQuery = "";
+let foodSearchResults = [];
+let foodSearchStatus = "idle"; // idle | loading | done | error
+let foodSearchSelectedIndex = null;
+let foodSearchAmount = 100;
+const foodSearchCache = {};
+
+function loadFoodFavorites() {
+  try {
+    const raw = localStorage.getItem("food_favorites_v1");
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; }
+  } catch (e) { /* fall through */ }
+  return [];
+}
+function saveFoodFavorites() {
+  try { localStorage.setItem("food_favorites_v1", JSON.stringify(foodFavorites)); } catch (e) { /* ignore */ }
+}
+let foodFavorites = loadFoodFavorites();
+let foodSearchMode = "search"; // search | favorites | meals
+
+function loadSavedMeals() {
+  try {
+    const raw = localStorage.getItem("saved_meals_v1");
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; }
+  } catch (e) { /* fall through */ }
+  return [];
+}
+function saveSavedMeals() {
+  try { localStorage.setItem("saved_meals_v1", JSON.stringify(savedMeals)); } catch (e) { /* ignore */ }
+}
+let savedMeals = loadSavedMeals();
+let mealBuilderActive = false;
+let mealBuilderEditingId = null;
+let mealBuilderName = "";
+let mealBuilderIngredients = []; // [{name, amount, kcal, protein, fat, carbs}]
+function mealBuilderTotals() {
+  return mealBuilderIngredients.reduce((acc, ing) => ({
+    kcal: acc.kcal + ing.kcal,
+    protein: acc.protein + (ing.protein || 0),
+    fat: acc.fat + (ing.fat || 0),
+    carbs: acc.carbs + (ing.carbs || 0),
+  }), { kcal: 0, protein: 0, fat: 0, carbs: 0 });
+}
+
+function parseOffProduct(p) {
+  const n = p.nutriments || {};
+  const kcal100 = n["energy-kcal_100g"] ?? (n["energy_100g"] != null ? n["energy_100g"] / 4.184 : null);
+  if (kcal100 == null || isNaN(kcal100)) return null;
+  return {
+    name: p.product_name || p.generic_name || "Okänt livsmedel",
+    brand: p.brands ? p.brands.split(",")[0].trim() : "",
+    kcal100: Math.round(kcal100),
+    protein100: n.proteins_100g != null ? Math.round(n.proteins_100g * 10) / 10 : null,
+    fat100: n.fat_100g != null ? Math.round(n.fat_100g * 10) / 10 : null,
+    carbs100: n.carbohydrates_100g != null ? Math.round(n.carbohydrates_100g * 10) / 10 : null,
+  };
+}
+
+function renderFoodMatchArea() {
+  if (foodSearchMode === "meals" && mealBuilderActive) {
+    const el = document.getElementById("mealSearchResults");
+    if (el) { el.innerHTML = mealBuilderSearchResultsHTML(); wireFoodDetailEvents(); }
+  } else {
+    renderFoodResultsArea();
+  }
+}
+async function searchFoodOFF(query) {
+  const key = query.trim().toLowerCase();
+  if (!key) return;
+  if (foodSearchCache[key]) {
+    foodSearchResults = foodSearchCache[key];
+    foodSearchStatus = "done";
+    renderFoodMatchArea();
+    return;
+  }
+  foodSearchStatus = "loading";
+  foodSearchResults = [];
+  renderFoodMatchArea();
+  try {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(key)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,generic_name,brands,nutriments`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("bad response");
+    const data = await res.json();
+    const products = (data.products || []).map(parseOffProduct).filter(Boolean).slice(0, 15);
+    foodSearchCache[key] = products;
+    foodSearchResults = products;
+    foodSearchStatus = "done";
+  } catch (e) {
+    foodSearchStatus = "error";
+  }
+  renderFoodMatchArea();
+}
+
+function isFoodFavorited(p) {
+  return foodFavorites.some((f) => f.name === p.name && f.kcal100 === p.kcal100);
+}
+function foodDetailPanelHTML(p, i) {
+  const favorited = isFoodFavorited(p);
+  if (mealBuilderActive) {
+    return `
+      <div style="padding:10px;background:var(--input-bg);border-radius:10px;margin:4px 0 10px">
+        <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);margin-bottom:8px">
+          ${p.protein100 != null ? `<span>Protein: ${p.protein100} g/100g</span>` : ""}
+          ${p.fat100 != null ? `<span>Fett: ${p.fat100} g/100g</span>` : ""}
+          ${p.carbs100 != null ? `<span>Kolhydrater: ${p.carbs100} g/100g</span>` : ""}
+        </div>
+        <div class="row" style="align-items:center">
+          <input type="number" inputmode="numeric" id="foodAmountInput" value="${foodSearchAmount}" enterkeyhint="go" style="max-width:90px" />
+          <span style="font-size:13px;color:var(--muted)">gram</span>
+          <span style="font-size:15px;font-weight:700;margin-left:auto" id="foodComputedKcal">${Math.round((p.kcal100 * foodSearchAmount) / 100)} kcal</span>
+        </div>
+        <button class="modal-btn primary" id="mealIngredientAddBtn" style="width:100%;margin-top:10px">+ Lägg till i måltiden</button>
+      </div>
+    `;
+  }
+  return `
+    <div style="padding:10px;background:var(--input-bg);border-radius:10px;margin:4px 0 10px">
+      <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);margin-bottom:8px">
+        ${p.protein100 != null ? `<span>Protein: ${p.protein100} g/100g</span>` : ""}
+        ${p.fat100 != null ? `<span>Fett: ${p.fat100} g/100g</span>` : ""}
+        ${p.carbs100 != null ? `<span>Kolhydrater: ${p.carbs100} g/100g</span>` : ""}
+      </div>
+      <div class="row" style="align-items:center">
+        <input type="number" inputmode="numeric" id="foodAmountInput" value="${foodSearchAmount}" enterkeyhint="go" style="max-width:90px" />
+        <span style="font-size:13px;color:var(--muted)">gram</span>
+        <span style="font-size:15px;font-weight:700;margin-left:auto" id="foodComputedKcal">${Math.round((p.kcal100 * foodSearchAmount) / 100)} kcal</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="modal-btn primary" id="foodAddBtn" style="flex:1">Lägg till som ätit</button>
+        <button class="modal-btn secondary" id="foodFavoriteBtn" style="width:auto;padding:0 14px;flex-shrink:0;${favorited ? "border-color:#F5B914;color:#F5B914;background:#F5B91426;" : ""}">${favorited ? "★" : "☆"}</button>
+      </div>
+    </div>
+  `;
+}
+function mealBuilderSearchResultsHTML() {
+  return `
+    ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
+    ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat.</p>` : ""}
+    ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar.</p>` : ""}
+    ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
+      <div class="history-scroll" style="max-height:260px">
+        ${foodSearchResults.map((p, i) => `
+          <div class="list-row" style="cursor:pointer" data-food-result="${i}">
+            <span style="font-size:13px;flex:1">${escapeHtml(p.name)}${p.brand ? ` <span style="color:var(--muted2)">— ${escapeHtml(p.brand)}</span>` : ""}</span>
+            <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${p.kcal100} kcal/100g</span>
+          </div>
+          ${foodSearchSelectedIndex === i ? foodDetailPanelHTML(p, i) : ""}
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+function mealBuilderHTML() {
+  const totals = mealBuilderTotals();
+  return `
+    <div style="font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:8px">${mealBuilderEditingId ? "Redigerar måltid" : "Ny måltid"}</div>
+    <div style="background:var(--input-bg);border-radius:10px;padding:10px;margin-bottom:12px">
+      <input type="text" id="mealNameInput" placeholder="Namn på måltiden, t.ex. Köttfärssås och spagetti" value="${escapeHtml(mealBuilderName)}" style="width:100%;margin-bottom:10px" />
+      ${mealBuilderIngredients.length === 0 ? `<p style="font-size:12.5px;color:var(--muted)">Sök och lägg till ingredienser nedan.</p>` : `
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+          ${mealBuilderIngredients.map((ing, i) => `
+            <div class="list-row">
+              <span style="font-size:12.5px;flex:1">${escapeHtml(ing.name)} (${ing.amount} g)</span>
+              <span style="font-size:12px;color:var(--muted);white-space:nowrap">${Math.round(ing.kcal)} kcal</span>
+              <button class="delete-btn" data-remove-ingredient="${i}">${ICONS.trash}</button>
+            </div>
+          `).join("")}
+        </div>
+        <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);padding-top:6px;border-top:1px solid var(--border)">
+          <span>Totalt: <strong style="color:var(--text)">${Math.round(totals.kcal)} kcal</strong></span>
+          <span>P: ${Math.round(totals.protein * 10) / 10}g</span>
+          <span>F: ${Math.round(totals.fat * 10) / 10}g</span>
+          <span>K: ${Math.round(totals.carbs * 10) / 10}g</span>
+        </div>
+      `}
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="foodSearchInput" placeholder="Sök ingrediens att lägga till" value="${escapeHtml(foodSearchQuery)}" style="flex:1;min-width:0" />
+      <button class="btn-primary" id="foodSearchBtn" style="background:${tabColors.kalorier}">${ICONS.search || "🔍"}</button>
+    </div>
+    <div id="mealSearchResults">${mealBuilderSearchResultsHTML()}</div>
+    <div class="row" style="margin-top:12px">
+      <button class="modal-btn secondary" id="cancelMealBtn" style="flex:1">Avbryt</button>
+      <button class="modal-btn primary" id="saveMealBtn" style="flex:1" ${mealBuilderIngredients.length === 0 ? "disabled" : ""}>${mealBuilderEditingId ? "Spara ändringar" : "Spara måltid"}</button>
+    </div>
+  `;
+}
+function foodResultsAreaHTML() {
+  if (foodSearchMode === "search") {
+    return `
+      ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
+      ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat. Kontrollera internetanslutningen och försök igen.</p>` : ""}
+      ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar. Prova ett annat sökord, eller logga kcal manuellt ovan.</p>` : ""}
+      ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
+        <div class="history-scroll" style="max-height:320px">
+          ${foodSearchResults.map((p, i) => `
+            <div class="list-row" style="cursor:pointer" data-food-result="${i}">
+              <span style="font-size:13px;flex:1">${escapeHtml(p.name)}${p.brand ? ` <span style="color:var(--muted2)">— ${escapeHtml(p.brand)}</span>` : ""}</span>
+              <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${p.kcal100} kcal/100g</span>
+            </div>
+            ${foodSearchSelectedIndex === i ? foodDetailPanelHTML(p, i) : ""}
+          `).join("")}
+        </div>
+      ` : ""}
+    `;
+  }
+  if (foodSearchMode === "meals") {
+    if (mealBuilderActive) return mealBuilderHTML();
+    return `
+      <button class="modal-btn secondary" id="newMealBtn" style="width:100%;margin-bottom:10px">+ Ny måltid</button>
+      ${savedMeals.length === 0 ? `<p style="text-align:center">Inga sparade måltider än — bygg ihop en av dina vanliga rätter för snabb loggning framöver.</p>` : `
+        <div class="history-scroll" style="max-height:320px">
+          ${savedMeals.map((m, i) => `
+            <div class="list-row" style="cursor:pointer" data-meal="${i}">
+              <span class="dot" style="background:${tabColors.kalorier}"></span>
+              <span style="font-size:13px;flex:1">${escapeHtml(m.name)}</span>
+              <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${Math.round(m.kcal)} kcal</span>
+              <button class="delete-btn" data-edit-meal="${i}">${ICONS.pencil}</button>
+              <button class="delete-btn" data-remove-meal="${i}">${ICONS.trash}</button>
+            </div>
+          `).join("")}
+        </div>
+      `}
+    `;
+  }
+  if (foodFavorites.length === 0) return `<p style="text-align:center">Inga favoriter sparade än — tryck på stjärnan vid ett sökresultat för att spara det här.</p>`;
+  return `
+    <div class="history-scroll" style="max-height:320px">
+      ${foodFavorites.map((p, i) => `
+        <div class="list-row" style="cursor:pointer" data-food-fav="${i}">
+          <span class="dot" style="background:${tabColors.kalorier}"></span>
+          <span style="font-size:13px;flex:1">${escapeHtml(p.name)}</span>
+          <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${p.kcal100} kcal/100g</span>
+        </div>
+        ${foodSearchSelectedIndex === i ? foodDetailPanelHTML(p, i) : ""}
+      `).join("")}
+    </div>
+  `;
+}
+function foodSearchCardHTML() {
+  return `
+    <div class="card">
+      ${cardChevronHeaderHTML("showFoodSearchToggle", "🔍 Sök livsmedel", showFoodSearch, showFoodSearch ? "10px" : null)}
+      ${showFoodSearch ? `
+        <div class="theme-row" style="margin-bottom:10px">
+          <button class="theme-btn" data-food-mode="search" style="${foodSearchMode === "search" ? `border-color:${tabColors.kalorier};color:${tabColors.kalorier}` : ""}">Sök</button>
+          <button class="theme-btn" data-food-mode="favorites" style="${foodSearchMode === "favorites" ? `border-color:${tabColors.kalorier};color:${tabColors.kalorier}` : ""}">⭐ Favoriter</button>
+          <button class="theme-btn" data-food-mode="meals" style="${foodSearchMode === "meals" ? `border-color:${tabColors.kalorier};color:${tabColors.kalorier}` : ""}">🍲 Måltider</button>
+        </div>
+        ${foodSearchMode === "search" ? `
+          <div class="row" style="margin-bottom:10px">
+            <input type="text" id="foodSearchInput" placeholder="t.ex. kycklingfilé" value="${escapeHtml(foodSearchQuery)}" style="flex:1;min-width:0" />
+            <button class="btn-primary" id="foodSearchBtn" style="background:${tabColors.kalorier}">${ICONS.search || "🔍"}</button>
+          </div>
+        ` : ""}
+        <div id="foodResultsArea">${foodResultsAreaHTML()}</div>
+      ` : ""}
+    </div>
+  `;
+}
+function renderFoodSearchCard() {
+  const wrap = document.getElementById("foodSearchCardWrap");
+  if (!wrap) return;
+  wrap.innerHTML = foodSearchCardHTML();
+  wireFoodSearchCardEvents();
+}
+function renderFoodResultsArea() {
+  const el = document.getElementById("foodResultsArea");
+  if (!el) return;
+  el.innerHTML = foodResultsAreaHTML();
+  wireFoodResultsAreaEvents();
+}
+function activeFoodList() {
+  return foodSearchMode === "favorites" ? foodFavorites : foodSearchResults;
+}
+function wireFoodSearchInputEvents() {
+  const searchInput = document.getElementById("foodSearchInput");
+  const searchBtn = document.getElementById("foodSearchBtn");
+  if (!searchInput || !searchBtn || searchInput.dataset.wired) return;
+  searchInput.dataset.wired = "1";
+  const doSearch = () => {
+    foodSearchQuery = searchInput.value;
+    foodSearchSelectedIndex = null;
+    searchFoodOFF(foodSearchQuery);
+  };
+  searchBtn.addEventListener("click", doSearch);
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
+  });
+  let debounceTimer = null;
+  searchInput.addEventListener("input", () => {
+    foodSearchQuery = searchInput.value;
+    clearTimeout(debounceTimer);
+    if (searchInput.value.trim().length < 2) return;
+    debounceTimer = setTimeout(() => {
+      foodSearchSelectedIndex = null;
+      searchFoodOFF(searchInput.value);
+    }, 450);
+  });
+}
+function wireFoodSearchCardEvents() {
+  const toggle = document.getElementById("showFoodSearchToggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      showFoodSearch = !showFoodSearch;
+      saveShowFoodSearch();
+      renderFoodSearchCard();
+    });
+  }
+  document.querySelectorAll("[data-food-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      foodSearchMode = btn.dataset.foodMode;
+      foodSearchSelectedIndex = null;
+      renderFoodSearchCard();
+    });
+  });
+  wireFoodSearchInputEvents();
+  wireFoodResultsAreaEvents();
+}
+function wireFoodDetailEvents() {
+  document.querySelectorAll("[data-food-result]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const i = parseInt(row.dataset.foodResult, 10);
+      foodSearchSelectedIndex = foodSearchSelectedIndex === i ? null : i;
+      renderFoodMatchArea();
+    });
+  });
+  const amountInput = document.getElementById("foodAmountInput");
+  if (amountInput) {
+    amountInput.addEventListener("input", (e) => {
+      const val = parseFloat(e.target.value.replace(",", "."));
+      foodSearchAmount = isNaN(val) ? 0 : val;
+      const p = activeFoodList()[foodSearchSelectedIndex];
+      const kcalEl = document.getElementById("foodComputedKcal");
+      if (p && kcalEl) kcalEl.textContent = `${Math.round((p.kcal100 * foodSearchAmount) / 100)} kcal`;
+    });
+    amountInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); (document.getElementById("foodAddBtn") || document.getElementById("mealIngredientAddBtn"))?.click(); }
+    });
+  }
+  const favBtn = document.getElementById("foodFavoriteBtn");
+  if (favBtn) {
+    favBtn.addEventListener("click", () => {
+      const p = activeFoodList()[foodSearchSelectedIndex];
+      if (!p) return;
+      const idx = foodFavorites.findIndex((f) => f.name === p.name && f.kcal100 === p.kcal100);
+      if (idx === -1) {
+        foodFavorites.push({ name: p.name, brand: p.brand || "", kcal100: p.kcal100, protein100: p.protein100, fat100: p.fat100, carbs100: p.carbs100 });
+      } else if (foodSearchMode === "favorites") {
+        foodFavorites.splice(idx, 1);
+        foodSearchSelectedIndex = null;
+      } else {
+        foodFavorites.splice(idx, 1);
+      }
+      saveFoodFavorites();
+      vibrate();
+      renderFoodResultsArea();
+    });
+  }
+  const addBtn = document.getElementById("foodAddBtn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      const p = activeFoodList()[foodSearchSelectedIndex];
+      if (!p) return;
+      const kcal = Math.round((p.kcal100 * foodSearchAmount) / 100);
+      if (kcal <= 0) return;
+      const scale = (per100) => (per100 != null ? Math.round(((per100 * foodSearchAmount) / 100) * 10) / 10 : null);
+      const entry = { id: uid(), date: calorieLogDate, kcal, type: "eaten", label: `${p.name} (${foodSearchAmount} g)`,
+        foodName: p.name, amount: foodSearchAmount, kcal100: p.kcal100, protein100: p.protein100, fat100: p.fat100, carbs100: p.carbs100 };
+      const protein = scale(p.protein100);
+      const fat = scale(p.fat100);
+      const carbs = scale(p.carbs100);
+      if (protein != null) entry.protein = protein;
+      if (fat != null) entry.fat = fat;
+      if (carbs != null) entry.carbs = carbs;
+      calorieLog.push(entry);
+      persistCalorieLog();
+      vibrate();
+      checkAchievements();
+      checkWeeklyChallenges();
+      awardLogXpForDate("calorie", calorieLogDate);
+      foodSearchSelectedIndex = null;
+      renderKalorier();
+    });
+  }
+  const mealIngredientAddBtn = document.getElementById("mealIngredientAddBtn");
+  if (mealIngredientAddBtn) {
+    mealIngredientAddBtn.addEventListener("click", () => {
+      const p = activeFoodList()[foodSearchSelectedIndex];
+      if (!p) return;
+      const scale = (per100) => (per100 != null ? Math.round(((per100 * foodSearchAmount) / 100) * 10) / 10 : 0);
+      mealBuilderIngredients.push({
+        name: p.name,
+        amount: foodSearchAmount,
+        kcal: Math.round((p.kcal100 * foodSearchAmount) / 100),
+        protein: scale(p.protein100),
+        fat: scale(p.fat100),
+        carbs: scale(p.carbs100),
+      });
+      foodSearchSelectedIndex = null;
+      vibrate();
+      renderFoodResultsArea();
+    });
+  }
+}
+function wireFoodResultsAreaEvents() {
+  wireFoodSearchInputEvents();
+  wireFoodDetailEvents();
+  document.querySelectorAll("[data-food-fav]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const i = parseInt(row.dataset.foodFav, 10);
+      foodSearchSelectedIndex = foodSearchSelectedIndex === i ? null : i;
+      renderFoodResultsArea();
+    });
+  });
+  const newMealBtn = document.getElementById("newMealBtn");
+  if (newMealBtn) {
+    newMealBtn.addEventListener("click", () => {
+      mealBuilderActive = true;
+      mealBuilderEditingId = null;
+      mealBuilderName = "";
+      mealBuilderIngredients = [];
+      foodSearchQuery = "";
+      foodSearchResults = [];
+      foodSearchStatus = "idle";
+      foodSearchSelectedIndex = null;
+      renderFoodResultsArea();
+    });
+  }
+  const cancelMealBtn = document.getElementById("cancelMealBtn");
+  if (cancelMealBtn) {
+    cancelMealBtn.addEventListener("click", () => {
+      mealBuilderActive = false;
+      mealBuilderEditingId = null;
+      mealBuilderIngredients = [];
+      mealBuilderName = "";
+      renderFoodResultsArea();
+    });
+  }
+  const mealNameInput = document.getElementById("mealNameInput");
+  if (mealNameInput) {
+    mealNameInput.addEventListener("input", (e) => { mealBuilderName = e.target.value; });
+  }
+  document.querySelectorAll("[data-remove-ingredient]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mealBuilderIngredients.splice(parseInt(btn.dataset.removeIngredient, 10), 1);
+      renderFoodResultsArea();
+    });
+  });
+  const saveMealBtn = document.getElementById("saveMealBtn");
+  if (saveMealBtn) {
+    saveMealBtn.addEventListener("click", () => {
+      const nameInput = document.getElementById("mealNameInput");
+      const name = (nameInput ? nameInput.value : mealBuilderName).trim();
+      if (!name) { nameInput?.focus(); return; }
+      if (mealBuilderIngredients.length === 0) return;
+      const totals = mealBuilderTotals();
+      const mealData = {
+        name,
+        kcal: Math.round(totals.kcal),
+        protein: Math.round(totals.protein * 10) / 10,
+        fat: Math.round(totals.fat * 10) / 10,
+        carbs: Math.round(totals.carbs * 10) / 10,
+        ingredients: mealBuilderIngredients.slice(),
+      };
+      if (mealBuilderEditingId) {
+        const existing = savedMeals.find((m) => m.id === mealBuilderEditingId);
+        if (existing) Object.assign(existing, mealData);
+      } else {
+        savedMeals.push({ id: uid(), ...mealData });
+      }
+      saveSavedMeals();
+      mealBuilderActive = false;
+      mealBuilderEditingId = null;
+      mealBuilderIngredients = [];
+      mealBuilderName = "";
+      vibrate();
+      renderFoodResultsArea();
+    });
+  }
+  document.querySelectorAll("[data-meal]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const meal = savedMeals[parseInt(row.dataset.meal, 10)];
+      if (!meal) return;
+      const entry = { id: uid(), date: calorieLogDate, kcal: meal.kcal, type: "eaten", label: meal.name };
+      if (meal.protein != null) entry.protein = meal.protein;
+      if (meal.fat != null) entry.fat = meal.fat;
+      if (meal.carbs != null) entry.carbs = meal.carbs;
+      calorieLog.push(entry);
+      persistCalorieLog();
+      vibrate();
+      checkAchievements();
+      checkWeeklyChallenges();
+      awardLogXpForDate("calorie", calorieLogDate);
+      renderKalorier();
+    });
+  });
+  document.querySelectorAll("[data-edit-meal]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const meal = savedMeals[parseInt(btn.dataset.editMeal, 10)];
+      if (!meal) return;
+      mealBuilderActive = true;
+      mealBuilderEditingId = meal.id;
+      mealBuilderName = meal.name;
+      mealBuilderIngredients = (meal.ingredients || []).map((ing) => ({ ...ing }));
+      foodSearchQuery = "";
+      foodSearchResults = [];
+      foodSearchStatus = "idle";
+      foodSearchSelectedIndex = null;
+      renderFoodResultsArea();
+    });
+  });
+  document.querySelectorAll("[data-remove-meal]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      savedMeals.splice(parseInt(btn.dataset.removeMeal, 10), 1);
+      saveSavedMeals();
+      renderFoodResultsArea();
+    });
+  });
+}
+
 function renderKalorier() {
   const { result, goalTarget } = computeCalorieGoal();
 
@@ -4414,6 +5441,24 @@ function renderKalorier() {
   const selectedEaten = selectedCalorieEntries.filter((e) => e.type !== "burned").reduce((s, e) => s + e.kcal, 0);
   const selectedBurned = selectedCalorieEntries.filter((e) => e.type === "burned").reduce((s, e) => s + e.kcal, 0);
   const remaining = goalTarget !== null ? goalTarget - selectedEaten + selectedBurned : 0;
+  const eatenEntries = selectedCalorieEntries.filter((e) => e.type !== "burned");
+  const totalProtein = eatenEntries.reduce((s, e) => s + (e.protein || 0), 0);
+  const totalFat = eatenEntries.reduce((s, e) => s + (e.fat || 0), 0);
+  const totalCarbs = eatenEntries.reduce((s, e) => s + (e.carbs || 0), 0);
+  const hasAnyMacros = eatenEntries.some((e) => e.protein != null || e.fat != null || e.carbs != null);
+  const latestWeightEntry = [...weightEntries].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const bodyweightKg = latestWeightEntry ? latestWeightEntry.value : null;
+  const macroDisplay = (key, total) => {
+    const setting = macroSettings[key];
+    const perKg = setting.enabled && setting.green.mode === "perkg" && bodyweightKg ? total / bodyweightKg : null;
+    return {
+      color: macroColorFor(key, total, bodyweightKg),
+      suffix: perKg != null ? ` <span style="font-size:10.5px;font-weight:400">(${Math.round(perKg * 10) / 10} g/kg)</span>` : "",
+    };
+  };
+  const proteinDisplay = macroDisplay("protein", totalProtein);
+  const fatDisplay = macroDisplay("fat", totalFat);
+  const carbsDisplay = macroDisplay("carbs", totalCarbs);
 
   content.innerHTML = `
     <div class="card">
@@ -4426,10 +5471,10 @@ function renderKalorier() {
       </div>
       <div class="field-label" style="margin-bottom:4px">Ätit</div>
       <div class="row" style="flex-wrap:wrap;margin-bottom:10px">
-        ${quickPresets.eaten.map((p) => `<button class="chip" data-quick-eaten="${p.kcal}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
+        ${quickPresets.eaten.map((p, i) => `<button class="chip" data-quick-eaten-idx="${i}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
       </div>
       <div class="row" style="margin-bottom:10px">
-        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 800" id="calorieKcalInput" style="max-width:140px" />
+        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 800" id="calorieKcalInput" enterkeyhint="go" style="max-width:140px" />
         <button class="btn-primary" id="calorieAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
       <div class="field-label" style="margin-bottom:4px">Kalorier förbrukade</div>
@@ -4437,7 +5482,7 @@ function renderKalorier() {
         ${quickPresets.burned.map((p) => `<button class="chip" data-quick-burned="${p.kcal}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
       </div>
       <div class="row">
-        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 300" id="burnedKcalInput" style="max-width:140px" />
+        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 300" id="burnedKcalInput" enterkeyhint="go" style="max-width:140px" />
         <button class="btn-primary" id="burnedAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
       <div style="display:flex;justify-content:space-around;text-align:center;margin-top:14px">
@@ -4454,19 +5499,47 @@ function renderKalorier() {
           <div style="font-size:18px;font-weight:700;color:${result ? (remaining < 0 ? "#E15554" : "#4CAF7D") : "var(--muted2)"}">${result ? remaining : "–"}</div>
         </div>
       </div>
+      ${hasAnyMacros ? `
+        <div style="display:flex;justify-content:space-around;text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div>
+            <div style="font-size:10.5px;color:var(--muted2);margin-bottom:2px">Protein</div>
+            <div style="font-size:14px;font-weight:600;color:${proteinDisplay.color}">${Math.round(totalProtein * 10) / 10} g${proteinDisplay.suffix}</div>
+          </div>
+          <div>
+            <div style="font-size:10.5px;color:var(--muted2);margin-bottom:2px">Fett</div>
+            <div style="font-size:14px;font-weight:600;color:${fatDisplay.color}">${Math.round(totalFat * 10) / 10} g${fatDisplay.suffix}</div>
+          </div>
+          <div>
+            <div style="font-size:10.5px;color:var(--muted2);margin-bottom:2px">Kolhydrater</div>
+            <div style="font-size:14px;font-weight:600;color:${carbsDisplay.color}">${Math.round(totalCarbs * 10) / 10} g${carbsDisplay.suffix}</div>
+          </div>
+        </div>
+      ` : ""}
       ${selectedCalorieEntries.length ? `
         <div class="history-scroll" style="margin-top:12px;max-height:330px">
-          ${selectedCalorieEntries.map((e) => `
-            <div class="list-row">
-              <span class="dot" style="background:${e.type === "burned" ? "#4CAF7D" : "#E8834A"}"></span>
-              <span style="font-size:14px;font-weight:600;flex:1">${e.type === "burned" ? "Kalorier förbrukade" : "Ätit"} · ${e.kcal} kcal</span>
+          ${selectedCalorieEntries.map((e) => {
+            const hasMacros = e.protein != null || e.fat != null || e.carbs != null;
+            const macroParts = [];
+            if (e.protein != null) macroParts.push(`P: ${e.protein} g`);
+            if (e.fat != null) macroParts.push(`F: ${e.fat} g`);
+            if (e.carbs != null) macroParts.push(`K: ${e.carbs} g`);
+            return `
+            <div class="list-row" style="align-items:flex-start">
+              <span class="dot" style="background:${e.type === "burned" ? "#4CAF7D" : "#E8834A"};margin-top:5px"></span>
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600">${e.label ? escapeHtml(e.label) : (e.type === "burned" ? "Kalorier förbrukade" : "Ätit")} · ${e.kcal} kcal</div>
+                ${hasMacros ? `<div style="font-size:11.5px;color:var(--muted);margin-top:1px">${macroParts.join(" · ")}</div>` : ""}
+              </div>
               <button class="delete-btn" data-edit-calorie="${e.id}">${ICONS.pencil}</button>
               <button class="delete-btn" data-del-calorie="${e.id}">${ICONS.trash}</button>
             </div>
-          `).join("")}
+          `;
+          }).join("")}
         </div>
       ` : ""}
     </div>
+
+    <div id="foodSearchCardWrap">${foodSearchCardHTML()}</div>
 
     ${result ? `
       <div class="card">
@@ -4503,6 +5576,7 @@ function renderKalorier() {
     });
   }
   wireCalorieHistoryListCardEvents();
+  wireFoodSearchCardEvents();
 
   document.getElementById("managePresetsBtn").addEventListener("click", openManageCaloriePresetsModal);
   document.getElementById("calorieLogDateInput").addEventListener("change", (e) => {
@@ -4510,10 +5584,16 @@ function renderKalorier() {
     renderKalorier();
   });
 
-  content.querySelectorAll("[data-quick-eaten]").forEach((btn) => {
+  content.querySelectorAll("[data-quick-eaten-idx]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const num = parseInt(btn.dataset.quickEaten, 10);
-      calorieLog.push({ id: uid(), date: calorieLogDate, kcal: num, type: "eaten" });
+      const p = quickPresets.eaten[parseInt(btn.dataset.quickEatenIdx, 10)];
+      if (!p) return;
+      const entry = { id: uid(), date: calorieLogDate, kcal: p.kcal, type: "eaten" };
+      if (p.protein != null) entry.protein = p.protein;
+      if (p.fat != null) entry.fat = p.fat;
+      if (p.carbs != null) entry.carbs = p.carbs;
+      if (p.label) entry.label = p.label;
+      calorieLog.push(entry);
       persistCalorieLog();
       vibrate();
       checkAchievements();
@@ -4549,6 +5629,9 @@ function renderKalorier() {
       awardLogXpForDate("calorie", calorieLogDate);
       renderKalorier();
     });
+    document.getElementById("calorieKcalInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); calorieBtn.click(); }
+    });
   }
   const burnedBtn = document.getElementById("burnedAddBtn");
   if (burnedBtn) {
@@ -4564,11 +5647,18 @@ function renderKalorier() {
       awardLogXpForDate("calorie", calorieLogDate);
       renderKalorier();
     });
+    document.getElementById("burnedKcalInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); burnedBtn.click(); }
+    });
   }
   content.querySelectorAll("[data-edit-calorie]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const entry = calorieLog.find((e) => e.id === btn.dataset.editCalorie);
       if (!entry) return;
+      if (entry.kcal100 != null) {
+        openEditFoodEntryModal(entry.id);
+        return;
+      }
       // Remove the old entry and prefill the right input with its value for adjustment.
       calorieLog = calorieLog.filter((e) => e.id !== entry.id);
       persistCalorieLog();
@@ -4706,6 +5796,10 @@ function buildDataPayload() {
     bodyMeasurements,
     pbLog,
     konditionPbLog,
+    foodFavorites,
+    savedMeals,
+    gymSessionHistory,
+    activeGymSession,
   };
 }
 
@@ -4734,6 +5828,8 @@ function buildSettingsPayload() {
     bodyMeasurementsEnabled,
     bodyMeasurementTypes,
     pbExercises,
+    gymExercises,
+    macroSettings,
     konditionPbDistances,
     showPbCard,
     showPbHistory,
@@ -4746,6 +5842,7 @@ function buildSettingsPayload() {
     showWorkoutHistory,
     showCalorieHistoryList,
     showBodyMeasurementHistory,
+    showFoodSearch,
     hapticsEnabled,
     calorieGoal,
     showCalorieStats,
@@ -5053,6 +6150,26 @@ function importBackupFile(file) {
         persistKonditionPbLog();
         restoredSomething = true;
       }
+      if (Array.isArray(data.foodFavorites)) {
+        foodFavorites = data.foodFavorites;
+        saveFoodFavorites();
+        restoredSomething = true;
+      }
+      if (Array.isArray(data.savedMeals)) {
+        savedMeals = data.savedMeals;
+        saveSavedMeals();
+        restoredSomething = true;
+      }
+      if (Array.isArray(data.gymSessionHistory)) {
+        gymSessionHistory = data.gymSessionHistory;
+        saveGymSessionHistory();
+        restoredSomething = true;
+      }
+      if (data.activeGymSession && typeof data.activeGymSession === "object") {
+        activeGymSession = data.activeGymSession;
+        saveActiveGymSession();
+        restoredSomething = true;
+      }
       if (Array.isArray(data.trainingTypes) && data.trainingTypes.length) {
         trainingTypes = data.trainingTypes;
         saveTrainingTypes();
@@ -5157,6 +6274,18 @@ function importBackupFile(file) {
         savePbExercises();
         restoredSomething = true;
       }
+      if (data.gymExercises && typeof data.gymExercises === "object") {
+        gymExercises = data.gymExercises;
+        saveGymExercises();
+        restoredSomething = true;
+      }
+      if (data.macroSettings && typeof data.macroSettings === "object") {
+        macroSettings = { protein: normalizeMacroSetting("protein", data.macroSettings.protein),
+          fat: normalizeMacroSetting("fat", data.macroSettings.fat),
+          carbs: normalizeMacroSetting("carbs", data.macroSettings.carbs) };
+        saveMacroSettings();
+        restoredSomething = true;
+      }
       if (Array.isArray(data.konditionPbDistances) && data.konditionPbDistances.length) {
         konditionPbDistances = data.konditionPbDistances;
         saveKonditionPbDistances();
@@ -5215,6 +6344,11 @@ function importBackupFile(file) {
       if (typeof data.showBodyMeasurementHistory === "boolean") {
         showBodyMeasurementHistory = data.showBodyMeasurementHistory;
         saveShowBodyMeasurementHistory();
+        restoredSomething = true;
+      }
+      if (typeof data.showFoodSearch === "boolean") {
+        showFoodSearch = data.showFoodSearch;
+        saveShowFoodSearch();
         restoredSomething = true;
       }
       if (typeof data.hapticsEnabled === "boolean") {
@@ -5342,6 +6476,20 @@ function openBackupModal() {
         </div>
 
         <div class="toggle-row">
+          <span style="font-size:14px;font-weight:600">Avancerad meny Vikt</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="viktAdvancedSectionToggle" ${bodyMeasurementsEnabled ? "checked" : ""} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p style="margin-top:-4px">Extra mått och val kopplade till Vikt-fliken.</p>
+        <div id="viktAdvancedBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${bodyMeasurementsEnabled ? "" : "display:none"}">
+
+          <div id="bodyMeasurementTypesList" style="display:flex;flex-direction:column;gap:10px"></div>
+
+        </div>
+
+        <div class="toggle-row">
           <span style="font-size:14px;font-weight:600">Avancerad meny Träning</span>
           <label class="toggle-switch">
             <input type="checkbox" id="trainingAdvancedSectionToggle" ${trainingAdvancedSectionOpen ? "checked" : ""} />
@@ -5352,26 +6500,37 @@ function openBackupModal() {
         <div id="trainingAdvancedBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${trainingAdvancedSectionOpen ? "" : "display:none"}">
 
           <div class="toggle-row">
-            <span style="font-size:14px;font-weight:600">Utvärdering (Kampsport)</span>
+            <span style="font-size:14px;font-weight:600">Avancerad meny (Kampsport)</span>
             <label class="toggle-switch">
-              <input type="checkbox" id="advancedMenuToggle" ${advancedMenuEnabled ? "checked" : ""} />
+              <input type="checkbox" id="kampsportAdvancedSectionToggle" ${kampsportAdvancedSectionOpen ? "checked" : ""} />
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="margin-top:-4px">Slå på för att svara på frågor (1-10) efter BJJ/SW-pass.</p>
+          <p style="margin-top:-4px">Utvärdering och submissions för BJJ/SW-pass.</p>
+          <div id="kampsportAdvancedBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${kampsportAdvancedSectionOpen ? "" : "display:none"}">
 
-          <div id="advancedQuestionsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${advancedMenuEnabled ? "" : "display:none"}"></div>
+            <div class="toggle-row">
+              <span style="font-size:14px;font-weight:600">Utvärdering</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="advancedMenuToggle" ${advancedMenuEnabled ? "checked" : ""} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p style="margin-top:-4px">Slå på för att svara på frågor (1-10) efter BJJ/SW-pass.</p>
 
-          <div class="toggle-row settings-indent" style="${advancedMenuEnabled ? "" : "display:none"}" id="submissionsToggleRow">
-            <span style="font-size:14px;font-weight:600">Submissions</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="submissionsMenuToggle" ${submissionsMenuEnabled ? "checked" : ""} />
-              <span class="toggle-slider"></span>
-            </label>
+            <div id="advancedQuestionsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${advancedMenuEnabled ? "" : "display:none"}"></div>
+
+            <div class="toggle-row" id="submissionsToggleRow">
+              <span style="font-size:14px;font-weight:600">Submissions</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="submissionsMenuToggle" ${submissionsMenuEnabled ? "checked" : ""} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p style="margin-top:-4px" id="submissionsToggleHint">Slå på för att välja vilka submissions du fick under BJJ/SW-pass.</p>
+            <div id="submissionTypesList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${submissionsMenuEnabled ? "" : "display:none"}"></div>
+
           </div>
-          <p class="settings-indent" style="margin-top:-4px;${advancedMenuEnabled ? "" : "display:none"}" id="submissionsToggleHint">Slå på för att välja vilka submissions du fick under BJJ/SW-pass.</p>
-          <div id="submissionTypesList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${advancedMenuEnabled && submissionsMenuEnabled ? "" : "display:none"}"></div>
-
           <div class="toggle-row">
             <span style="font-size:14px;font-weight:600">Avancerad meny (Gym)</span>
             <label class="toggle-switch">
@@ -5381,6 +6540,8 @@ function openBackupModal() {
           </div>
           <p style="margin-top:-4px">Slå på för att kunna välja vilket gympass du kört.</p>
           <div id="gymSplitsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
+          <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="gymExercisesHint">Övningar per gympass (för "Starta pass"):</p>
+          <div id="gymExercisesManagement" class="settings-indent" style="display:flex;flex-direction:column;gap:14px;${gymMenuEnabled ? "" : "display:none"}"></div>
           <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="pbExercisesHint">Övningar för "Personbästa!" (visas när du loggar ett gympass):</p>
           <div id="pbExercisesList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
 
@@ -5397,27 +6558,47 @@ function openBackupModal() {
         </div>
 
         <div class="toggle-row">
-          <span style="font-size:14px;font-weight:600">Avancerad meny Vikt</span>
+          <span style="font-size:14px;font-weight:600">Avancerad meny Kalorier</span>
           <label class="toggle-switch">
-            <input type="checkbox" id="viktAdvancedSectionToggle" ${bodyMeasurementsEnabled ? "checked" : ""} />
+            <input type="checkbox" id="presetsMenuToggle" ${presetsSectionOpen ? "checked" : ""} />
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <p style="margin-top:-4px">Extra mått och val kopplade till Vikt-fliken.</p>
-        <div id="viktAdvancedBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${bodyMeasurementsEnabled ? "" : "display:none"}">
+        <p style="margin-top:-4px">Redigera snabbknappar och hantera hur makros (protein/fett/kolhydrater) färgkodas.</p>
+        <div id="presetsBody" style="display:flex;flex-direction:column;gap:10px;${presetsSectionOpen ? "" : "display:none"}">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:0;font-weight:600">Hantera snabbknappar</div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted)">Ätit</div>
+          <div id="presetsEatenList" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="newEatenLabel" placeholder="Namn" style="flex:1;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;min-width:0" />
+            <input type="number" inputmode="numeric" id="newEatenKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
+            <button class="modal-btn primary" id="addEatenPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:-4px">
+            <input type="number" inputmode="decimal" id="newEatenProtein" placeholder="Protein g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
+            <input type="number" inputmode="decimal" id="newEatenFat" placeholder="Fett g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
+            <input type="number" inputmode="decimal" id="newEatenCarbs" placeholder="Kolh. g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:4px">Kalorier förbrukade</div>
+          <div id="presetsBurnedList" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="newBurnedLabel" placeholder="Namn" style="flex:1;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;min-width:0" />
+            <input type="number" inputmode="numeric" id="newBurnedKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
+            <button class="modal-btn primary" id="addBurnedPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
+          </div>
 
-          <div id="bodyMeasurementTypesList" style="display:flex;flex-direction:column;gap:10px"></div>
-
+          <div style="font-size:13px;color:var(--muted);margin-bottom:0;margin-top:10px;font-weight:600">Hantera makros</div>
+          <div id="macroSettingsList" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
 
         <div class="toggle-row">
-          <span style="font-size:14px;font-weight:600">Flikar</span>
+          <span style="font-size:14px;font-weight:600">Avancerad meny Flikar</span>
           <label class="toggle-switch">
             <input type="checkbox" id="tabOrderMenuToggle" ${tabOrderSectionOpen ? "checked" : ""} />
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <p style="margin-top:-4px">Slå på för att välja ikonstil och ändra ordningen på flikarna längst ner.</p>
+        <p style="margin-top:-4px">Slå på för att välja ikonstil, flikfärger och ändra ordningen på flikarna längst ner.</p>
         <div id="tabOrderBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${tabOrderSectionOpen ? "" : "display:none"}">
           <div style="font-size:13px;color:var(--muted);margin-bottom:4px">Ikonstil</div>
           <div class="theme-row">
@@ -5433,17 +6614,8 @@ function openBackupModal() {
             <input type="color" id="navBadgeColorInput" value="${navBadgeColor}" style="width:36px;height:36px;border:1px solid var(--border2);border-radius:8px;background:none;padding:2px;cursor:pointer" />
           </div>
           <div id="tabOrderList" style="display:flex;flex-direction:column;gap:6px"></div>
-        </div>
 
-        <div class="toggle-row">
-          <span style="font-size:14px;font-weight:600">Färger</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="colorsMenuToggle" ${colorsSectionOpen ? "checked" : ""} />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="margin-top:-4px">Slå på för att välja din egen färg för varje flik.</p>
-        <div id="colorsBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${colorsSectionOpen ? "" : "display:none"}">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:0;margin-top:10px;font-weight:600">Färger</div>
           ${TABS.map((t) => `
             <div style="display:flex;align-items:center;gap:10px">
               <input type="color" data-tab-color="${t.key}" value="${tabColors[t.key]}" style="width:32px;height:32px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
@@ -5452,31 +6624,6 @@ function openBackupModal() {
           `).join("")}
           <button class="modal-btn secondary" id="resetColorsBtn">Återställ till standardfärg</button>
           <button class="modal-btn secondary" id="manageTypesFromColorsBtn">Hantera träningspass (färg &amp; minuter)</button>
-        </div>
-
-        <div class="toggle-row">
-          <span style="font-size:14px;font-weight:600">Snabbknappar kalorier</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="presetsMenuToggle" ${presetsSectionOpen ? "checked" : ""} />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="margin-top:-4px">Slå på för att redigera snabbknapparna i Kalorier-fliken.</p>
-        <div id="presetsBody" style="display:flex;flex-direction:column;gap:10px;${presetsSectionOpen ? "" : "display:none"}">
-          <div style="font-size:12px;font-weight:700;color:var(--muted)">Ätit</div>
-          <div id="presetsEatenList" style="display:flex;flex-direction:column;gap:6px"></div>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="newEatenLabel" placeholder="Namn" style="flex:1;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;min-width:0" />
-            <input type="number" inputmode="numeric" id="newEatenKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
-            <button class="modal-btn primary" id="addEatenPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
-          </div>
-          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:4px">Kalorier förbrukade</div>
-          <div id="presetsBurnedList" style="display:flex;flex-direction:column;gap:6px"></div>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="newBurnedLabel" placeholder="Namn" style="flex:1;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;min-width:0" />
-            <input type="number" inputmode="numeric" id="newBurnedKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
-            <button class="modal-btn primary" id="addBurnedPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
-          </div>
         </div>
 
         <div class="toggle-row">
@@ -5574,16 +6721,19 @@ function openBackupModal() {
   });
   document.getElementById("openProfileBtn").addEventListener("click", () => {
     profileModalReturnsToSettings = true;
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    profileModalReturnScrollTop = sheet ? sheet.scrollTop : 0;
     openProfileModal();
   });
-  document.getElementById("openAboutBtn").addEventListener("click", openAboutModal);
+  document.getElementById("openAboutBtn").addEventListener("click", () => {
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    aboutModalReturnScrollTop = sheet ? sheet.scrollTop : 0;
+    openAboutModal();
+  });
   document.getElementById("advancedMenuToggle").addEventListener("change", (e) => {
     advancedMenuEnabled = e.target.checked;
     saveAdvancedMenuEnabled();
     document.getElementById("advancedQuestionsList").style.display = advancedMenuEnabled ? "flex" : "none";
-    document.getElementById("submissionsToggleRow").style.display = advancedMenuEnabled ? "flex" : "none";
-    document.getElementById("submissionsToggleHint").style.display = advancedMenuEnabled ? "" : "none";
-    document.getElementById("submissionTypesList").style.display = advancedMenuEnabled && submissionsMenuEnabled ? "flex" : "none";
     if (activeTab === "traning") renderTraning();
   });
   renderAdvancedQuestionsList();
@@ -5591,7 +6741,7 @@ function openBackupModal() {
   document.getElementById("submissionsMenuToggle").addEventListener("change", (e) => {
     submissionsMenuEnabled = e.target.checked;
     saveSubmissionsMenuEnabled();
-    document.getElementById("submissionTypesList").style.display = advancedMenuEnabled && submissionsMenuEnabled ? "flex" : "none";
+    document.getElementById("submissionTypesList").style.display = submissionsMenuEnabled ? "flex" : "none";
     if (activeTab === "stats") renderStats();
     if (activeTab === "traning") renderTraning();
   });
@@ -5599,11 +6749,14 @@ function openBackupModal() {
     gymMenuEnabled = e.target.checked;
     saveGymMenuEnabled();
     document.getElementById("gymSplitsList").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymExercisesManagement").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymExercisesHint").style.display = gymMenuEnabled ? "" : "none";
     document.getElementById("pbExercisesList").style.display = gymMenuEnabled ? "flex" : "none";
     document.getElementById("pbExercisesHint").style.display = gymMenuEnabled ? "" : "none";
     if (activeTab === "traning") renderTraning();
   });
   renderGymSplitsList();
+  renderGymExercisesManagement();
   renderPbExercisesList();
   document.getElementById("konditionMenuToggle").addEventListener("change", (e) => {
     konditionMenuEnabled = e.target.checked;
@@ -5615,6 +6768,10 @@ function openBackupModal() {
   document.getElementById("trainingAdvancedSectionToggle").addEventListener("change", (e) => {
     trainingAdvancedSectionOpen = e.target.checked;
     document.getElementById("trainingAdvancedBody").style.display = trainingAdvancedSectionOpen ? "flex" : "none";
+  });
+  document.getElementById("kampsportAdvancedSectionToggle").addEventListener("change", (e) => {
+    kampsportAdvancedSectionOpen = e.target.checked;
+    document.getElementById("kampsportAdvancedBody").style.display = kampsportAdvancedSectionOpen ? "flex" : "none";
   });
   document.getElementById("viktAdvancedSectionToggle").addEventListener("change", (e) => {
     bodyMeasurementsEnabled = e.target.checked;
@@ -5645,6 +6802,7 @@ function openBackupModal() {
     btn.addEventListener("click", () => {
       navIconSize = btn.dataset.navIconSize;
       saveNavIconSize();
+      markWeeklyMiscFlag("iconSizeChangedWeek");
       renderNav();
       const sheet = modalRoot.querySelector(".modal-sheet");
       const scrollTop = sheet ? sheet.scrollTop : 0;
@@ -5658,13 +6816,10 @@ function openBackupModal() {
     navBadgeColorInput.addEventListener("input", (e) => {
       navBadgeColor = e.target.value;
       saveNavBadgeColor();
+      markWeeklyMiscFlag("badgeColorChangedWeek");
       renderNav();
     });
   }
-  document.getElementById("colorsMenuToggle").addEventListener("change", (e) => {
-    colorsSectionOpen = e.target.checked;
-    document.getElementById("colorsBody").style.display = colorsSectionOpen ? "flex" : "none";
-  });
   document.getElementById("presetsMenuToggle").addEventListener("change", (e) => {
     presetsSectionOpen = e.target.checked;
     document.getElementById("presetsBody").style.display = presetsSectionOpen ? "flex" : "none";
@@ -5776,9 +6931,12 @@ function openBackupModal() {
   });
   document.getElementById("manageTypesFromColorsBtn").addEventListener("click", () => {
     typesModalReturnsToSettings = true;
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    typesModalReturnScrollTop = sheet ? sheet.scrollTop : 0;
     openManageTypesModal();
   });
   renderPresetLists();
+  renderMacroSettingsList();
   document.getElementById("addEatenPresetBtn").addEventListener("click", () => addPreset("eaten", "newEatenLabel", "newEatenKcal"));
   document.getElementById("addBurnedPresetBtn").addEventListener("click", () => addPreset("burned", "newBurnedLabel", "newBurnedKcal"));
   document.getElementById("exportExcelBtn").addEventListener("click", exportExcel);
@@ -6192,6 +7350,97 @@ function renderPbExercisesList() {
 }
 SETTINGS_LIST_RENDERERS.pbExercisesList = renderPbExercisesList;
 
+function renderGymExercisesManagement() {
+  const container = document.getElementById("gymExercisesManagement");
+  if (!container) return;
+  gymSplits.forEach((split) => { SETTINGS_LIST_RENDERERS[`gymExercises_${split.id}`] = renderGymExercisesManagement; });
+  container.innerHTML = gymSplits.filter((g) => g.enabled).map((split) => {
+    const listKey = `gymExercises_${split.id}`;
+    const expanded = !!settingsListExpanded[listKey];
+    const list = exercisesForSplit(split.id);
+    let html = collapsibleListHeaderHTML(listKey, `Övningar — ${split.text}`, list.length);
+    if (expanded) {
+      html += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">` + list.map((ex, i) => `
+        <div style="display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:7px 10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="text" data-gymex-name="${split.id}:${i}" value="${escapeHtml(ex.name)}" style="flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;padding:2px" />
+            <label class="toggle-switch">
+              <input type="checkbox" data-gymex-enabled="${split.id}:${i}" ${ex.enabled ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+            <button class="delete-btn" data-gymex-remove="${split.id}:${i}">${ICONS.trash}</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)">Set
+              <input type="number" inputmode="numeric" min="1" data-gymex-sets="${split.id}:${i}" value="${ex.defaultSets}" style="width:44px;text-align:center;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px" />
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)">Reps
+              <input type="number" inputmode="numeric" min="1" data-gymex-reps="${split.id}:${i}" value="${ex.defaultReps}" style="width:44px;text-align:center;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px" />
+            </label>
+          </div>
+        </div>
+      `).join("") + `
+        <div style="display:flex;gap:8px">
+          <input type="text" data-gymex-new="${split.id}" placeholder="t.ex. Marklyft" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit" />
+          <button class="modal-btn primary" data-gymex-add="${split.id}" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
+        </div>
+      </div>`;
+    }
+    return `<div>${html}</div>`;
+  }).join("");
+  wireCollapsibleListToggles(container);
+  container.querySelectorAll("[data-gymex-name]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [splitId, idx] = input.dataset.gymexName.split(":");
+      gymExercises[splitId][parseInt(idx, 10)].name = e.target.value;
+      saveGymExercises();
+    });
+  });
+  container.querySelectorAll("[data-gymex-enabled]").forEach((input) => {
+    input.addEventListener("change", (e) => {
+      const [splitId, idx] = input.dataset.gymexEnabled.split(":");
+      gymExercises[splitId][parseInt(idx, 10)].enabled = e.target.checked;
+      saveGymExercises();
+    });
+  });
+  container.querySelectorAll("[data-gymex-sets]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [splitId, idx] = input.dataset.gymexSets.split(":");
+      const num = parseInt(e.target.value, 10);
+      gymExercises[splitId][parseInt(idx, 10)].defaultSets = isNaN(num) || num < 1 ? 1 : num;
+      saveGymExercises();
+    });
+  });
+  container.querySelectorAll("[data-gymex-reps]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [splitId, idx] = input.dataset.gymexReps.split(":");
+      const num = parseInt(e.target.value, 10);
+      gymExercises[splitId][parseInt(idx, 10)].defaultReps = isNaN(num) || num < 1 ? 1 : num;
+      saveGymExercises();
+    });
+  });
+  container.querySelectorAll("[data-gymex-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const [splitId, idx] = btn.dataset.gymexRemove.split(":");
+      gymExercises[splitId].splice(parseInt(idx, 10), 1);
+      saveGymExercises();
+      renderGymExercisesManagement();
+    });
+  });
+  container.querySelectorAll("[data-gymex-add]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const splitId = btn.dataset.gymexAdd;
+      const input = container.querySelector(`[data-gymex-new="${splitId}"]`);
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      if (!gymExercises[splitId]) gymExercises[splitId] = [];
+      gymExercises[splitId].push({ id: uid(), name, enabled: true, defaultSets: 3, defaultReps: 12 });
+      saveGymExercises();
+      renderGymExercisesManagement();
+    });
+  });
+}
+
 function renderGymSplitsList() {
   const list = document.getElementById("gymSplitsList");
   if (!list) return;
@@ -6221,12 +7470,14 @@ function renderGymSplitsList() {
     input.addEventListener("input", (e) => {
       gymSplits[parseInt(input.dataset.gText, 10)].text = e.target.value;
       saveGymSplits();
+      renderGymExercisesManagement();
     });
   });
   list.querySelectorAll("[data-g-enabled]").forEach((input) => {
     input.addEventListener("change", (e) => {
       gymSplits[parseInt(input.dataset.gEnabled, 10)].enabled = e.target.checked;
       saveGymSplits();
+      renderGymExercisesManagement();
     });
   });
   list.querySelectorAll("[data-g-remove]").forEach((btn) => {
@@ -6234,6 +7485,7 @@ function renderGymSplitsList() {
       gymSplits.splice(parseInt(btn.dataset.gRemove, 10), 1);
       saveGymSplits();
       renderGymSplitsList();
+      renderGymExercisesManagement();
     });
   });
   const addBtn = document.getElementById("addGymSplitBtn");
@@ -6245,10 +7497,80 @@ function renderGymSplitsList() {
       gymSplits.push({ id: uid(), text, enabled: true });
       saveGymSplits();
       renderGymSplitsList();
+      renderGymExercisesManagement();
     });
   }
 }
 SETTINGS_LIST_RENDERERS.gymSplitsList = renderGymSplitsList;
+
+function openEditFoodEntryModal(entryId) {
+  const entry = calorieLog.find((e) => e.id === entryId);
+  if (!entry) return;
+  pushModalHistoryIfNeeded();
+  const render = () => {
+    const kcal = Math.round((entry.kcal100 * entry.amount) / 100);
+    const scale = (per100) => (per100 != null ? Math.round(((per100 * entry.amount) / 100) * 10) / 10 : null);
+    modalRoot.innerHTML = `
+      <div class="modal-overlay" id="editFoodEntryOverlay">
+        <div class="modal-sheet">
+          <h2>${escapeHtml(entry.foodName || "Redigera livsmedel")}</h2>
+          <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);margin-bottom:8px">
+            ${entry.protein100 != null ? `<span>Protein: ${entry.protein100} g/100g</span>` : ""}
+            ${entry.fat100 != null ? `<span>Fett: ${entry.fat100} g/100g</span>` : ""}
+            ${entry.carbs100 != null ? `<span>Kolhydrater: ${entry.carbs100} g/100g</span>` : ""}
+          </div>
+          <div class="row" style="align-items:center">
+            <input type="number" inputmode="numeric" id="editFoodAmountInput" value="${entry.amount}" enterkeyhint="done" style="max-width:90px" />
+            <span style="font-size:13px;color:var(--muted)">gram</span>
+            <span style="font-size:15px;font-weight:700;margin-left:auto" id="editFoodComputedKcal">${kcal} kcal</span>
+          </div>
+          <button class="modal-btn primary" id="saveEditFoodBtn" style="width:100%;margin-top:14px">Spara ändring</button>
+          <button class="modal-btn secondary" id="deleteEditFoodBtn" style="width:100%;margin-top:8px">Ta bort</button>
+          <div class="modal-close" id="editFoodCloseBtn">Avbryt</div>
+        </div>
+      </div>
+    `;
+    const amountInput = document.getElementById("editFoodAmountInput");
+    amountInput.addEventListener("input", (e) => {
+      const val = parseFloat(e.target.value.replace(",", "."));
+      if (!isNaN(val)) entry.amount = val;
+      const kcalEl = document.getElementById("editFoodComputedKcal");
+      if (kcalEl) kcalEl.textContent = `${Math.round((entry.kcal100 * (isNaN(val) ? 0 : val)) / 100)} kcal`;
+    });
+    amountInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); document.getElementById("saveEditFoodBtn").click(); }
+    });
+    document.getElementById("editFoodCloseBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; });
+    document.getElementById("editFoodEntryOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "editFoodEntryOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+    });
+    document.getElementById("deleteEditFoodBtn").addEventListener("click", () => {
+      calorieLog = calorieLog.filter((e) => e.id !== entryId);
+      persistCalorieLog();
+      modalRoot.innerHTML = "";
+      handleModalClosedByUser();
+      renderKalorier();
+    });
+    document.getElementById("saveEditFoodBtn").addEventListener("click", () => {
+      const amount = parseFloat(amountInput.value.replace(",", "."));
+      if (isNaN(amount) || amount <= 0) { amountInput.focus(); return; }
+      entry.amount = amount;
+      entry.kcal = Math.round((entry.kcal100 * amount) / 100);
+      entry.label = `${entry.foodName} (${amount} g)`;
+      const protein = scale(entry.protein100);
+      const fat = scale(entry.fat100);
+      const carbs = scale(entry.carbs100);
+      if (protein != null) entry.protein = protein; else delete entry.protein;
+      if (fat != null) entry.fat = fat; else delete entry.fat;
+      if (carbs != null) entry.carbs = carbs; else delete entry.carbs;
+      persistCalorieLog();
+      modalRoot.innerHTML = "";
+      handleModalClosedByUser();
+      renderKalorier();
+    });
+  };
+  render();
+}
 
 function openManageCaloriePresetsModal() {
   pushModalHistoryIfNeeded();
@@ -6257,13 +7579,18 @@ function openManageCaloriePresetsModal() {
     <div class="modal-overlay" id="caloriePresetsModalOverlay">
       <div class="modal-sheet">
         <h2>Hantera snabbknappar</h2>
-        <p>Lägg till eller ta bort knapparna för Ätit och Kalorier förbrukade.</p>
+        <p>Lägg till eller ta bort knapparna för Ätit och Kalorier förbrukade, och hantera hur makros (protein/fett/kolhydrater) färgkodas.</p>
         <div style="font-size:12px;font-weight:700;color:var(--muted)">Ätit</div>
         <div id="presetsEatenList" style="display:flex;flex-direction:column;gap:6px"></div>
         <div style="display:flex;gap:8px">
           <input type="text" id="newEatenLabel" placeholder="Namn" style="flex:1;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;min-width:0" />
           <input type="number" inputmode="numeric" id="newEatenKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
           <button class="modal-btn primary" id="addEatenPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="number" inputmode="decimal" id="newEatenProtein" placeholder="Protein g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
+          <input type="number" inputmode="decimal" id="newEatenFat" placeholder="Fett g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
+          <input type="number" inputmode="decimal" id="newEatenCarbs" placeholder="Kolh. g" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px;color:var(--text);font-size:12px;font-family:inherit;text-align:center" />
         </div>
         <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:4px">Kalorier förbrukade</div>
         <div id="presetsBurnedList" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -6272,11 +7599,16 @@ function openManageCaloriePresetsModal() {
           <input type="number" inputmode="numeric" id="newBurnedKcal" placeholder="kcal" style="width:70px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 8px;color:var(--text);font-size:13px;font-family:inherit;text-align:center" />
           <button class="modal-btn primary" id="addBurnedPresetBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
         </div>
+
+        <div style="font-size:13px;color:var(--muted);margin-bottom:0;margin-top:10px;font-weight:600">Hantera makros</div>
+        <div id="macroSettingsList" style="display:flex;flex-direction:column;gap:10px"></div>
+
         <div class="modal-close" id="caloriePresetsModalCloseBtn">Stäng</div>
       </div>
     </div>
   `;
   renderPresetLists();
+  renderMacroSettingsList();
   document.getElementById("addEatenPresetBtn").addEventListener("click", () => addPreset("eaten", "newEatenLabel", "newEatenKcal"));
   document.getElementById("addBurnedPresetBtn").addEventListener("click", () => addPreset("burned", "newBurnedLabel", "newBurnedKcal"));
   function closeCaloriePresetsModal() {
@@ -6289,6 +7621,72 @@ function openManageCaloriePresetsModal() {
   });
 }
 
+function renderMacroSettingsList() {
+  const container = document.getElementById("macroSettingsList");
+  if (!container) return;
+  const labels = { protein: "Protein", fat: "Fett", carbs: "Kolhydrater" };
+  const levelLabels = [
+    { key: "green", label: "🟢 Grönt vid minst" },
+    { key: "blue", label: "🔵 Blått vid minst" },
+    { key: "orange", label: "🟠 Orange vid minst" },
+  ];
+  container.innerHTML = Object.keys(labels).map((key) => {
+    const s = macroSettings[key];
+    return `
+      <div style="display:flex;flex-direction:column;gap:10px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:600">${labels[key]}</span>
+          <label class="toggle-switch">
+            <input type="checkbox" data-macro-enabled="${key}" ${s.enabled ? "checked" : ""} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        ${s.enabled ? levelLabels.map((lvl) => {
+          const level = s[lvl.key];
+          return `
+            <div style="display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid var(--border)">
+              <span style="font-size:12px;color:var(--muted)">${lvl.label}</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="theme-row" style="flex:1">
+                  <button class="theme-btn" data-macro-level-mode="${key}:${lvl.key}:static" style="${level.mode === "static" ? `border-color:${tabColors.kalorier};color:${tabColors.kalorier}` : ""}">Statiskt (g)</button>
+                  <button class="theme-btn" data-macro-level-mode="${key}:${lvl.key}:perkg" style="${level.mode === "perkg" ? `border-color:${tabColors.kalorier};color:${tabColors.kalorier}` : ""}">g/kg</button>
+                </div>
+                <input type="number" inputmode="decimal" step="0.1" data-macro-level-value="${key}:${lvl.key}" value="${level.value}" style="width:56px;text-align:center;flex-shrink:0" />
+              </div>
+            </div>
+          `;
+        }).join("") : ""}
+      </div>
+    `;
+  }).join("");
+  container.querySelectorAll("[data-macro-enabled]").forEach((input) => {
+    input.addEventListener("change", (e) => {
+      macroSettings[input.dataset.macroEnabled].enabled = e.target.checked;
+      saveMacroSettings();
+      renderMacroSettingsList();
+      if (activeTab === "kalorier") renderKalorier();
+    });
+  });
+  container.querySelectorAll("[data-macro-level-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const [key, level, mode] = btn.dataset.macroLevelMode.split(":");
+      macroSettings[key][level].mode = mode;
+      saveMacroSettings();
+      renderMacroSettingsList();
+      if (activeTab === "kalorier") renderKalorier();
+    });
+  });
+  container.querySelectorAll("[data-macro-level-value]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const [key, level] = input.dataset.macroLevelValue.split(":");
+      const num = parseFloat(e.target.value.replace(",", "."));
+      if (!isNaN(num) && num > 0) macroSettings[key][level].value = num;
+      saveMacroSettings();
+      if (activeTab === "kalorier") renderKalorier();
+    });
+  });
+}
+
 function renderPresetLists() {
   const render = (kind, containerId, label) => {
     const el = document.getElementById(containerId);
@@ -6298,11 +7696,20 @@ function renderPresetLists() {
     let html = collapsibleListHeaderHTML(listKey, label, quickPresets[kind].length);
     if (expanded) {
       html += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">` + (quickPresets[kind].map((p, i) => `
-        <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:7px 10px">
-          <input type="color" data-preset-color="${kind}:${i}" value="${p.color || "#8A8E99"}" style="width:26px;height:26px;border:1px solid var(--border2);border-radius:6px;background:none;padding:1px;cursor:pointer;flex-shrink:0" />
-          <input type="text" data-preset-label="${kind}:${i}" value="${escapeHtml(p.label)}" style="flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;padding:2px" />
-          <span style="font-size:12px;color:var(--muted);white-space:nowrap">${p.kcal} kcal</span>
-          <button class="delete-btn" data-preset-remove="${kind}:${i}">${ICONS.trash}</button>
+        <div style="display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:7px 10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="color" data-preset-color="${kind}:${i}" value="${p.color || "#8A8E99"}" style="width:26px;height:26px;border:1px solid var(--border2);border-radius:6px;background:none;padding:1px;cursor:pointer;flex-shrink:0" />
+            <input type="text" data-preset-label="${kind}:${i}" value="${escapeHtml(p.label)}" style="flex:1;min-width:0;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;padding:2px" />
+            <input type="number" inputmode="numeric" data-preset-kcal="${kind}:${i}" value="${p.kcal}" style="width:56px;flex-shrink:0;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;text-align:center;padding:4px 2px" />
+            <button class="delete-btn" data-preset-remove="${kind}:${i}">${ICONS.trash}</button>
+          </div>
+          ${kind === "eaten" ? `
+            <div style="display:flex;gap:6px">
+              <input type="number" inputmode="decimal" data-preset-protein="${kind}:${i}" value="${p.protein ?? ""}" placeholder="Protein g" style="flex:1;min-width:0;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11.5px;font-family:inherit;text-align:center;padding:4px 2px" />
+              <input type="number" inputmode="decimal" data-preset-fat="${kind}:${i}" value="${p.fat ?? ""}" placeholder="Fett g" style="flex:1;min-width:0;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11.5px;font-family:inherit;text-align:center;padding:4px 2px" />
+              <input type="number" inputmode="decimal" data-preset-carbs="${kind}:${i}" value="${p.carbs ?? ""}" placeholder="Kolh. g" style="flex:1;min-width:0;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11.5px;font-family:inherit;text-align:center;padding:4px 2px" />
+            </div>
+          ` : ""}
         </div>
       `).join("") || `<div class="empty" style="padding:4px 0">Inga knappar</div>`) + `</div>`;
     }
@@ -6325,6 +7732,41 @@ function renderPresetLists() {
       });
       input.addEventListener("blur", () => {
         if (activeTab === "kalorier") renderKalorier();
+      });
+    });
+    el.querySelectorAll("[data-preset-kcal]").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        const [k, idx] = input.dataset.presetKcal.split(":");
+        const num = parseInt(e.target.value, 10);
+        if (!isNaN(num) && num > 0) quickPresets[k][parseInt(idx, 10)].kcal = num;
+        saveQuickPresets();
+      });
+      input.addEventListener("blur", () => {
+        if (activeTab === "kalorier") renderKalorier();
+      });
+    });
+    el.querySelectorAll("[data-preset-protein]").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        const [k, idx] = input.dataset.presetProtein.split(":");
+        const num = parseFloat(e.target.value.replace(",", "."));
+        quickPresets[k][parseInt(idx, 10)].protein = isNaN(num) ? undefined : num;
+        saveQuickPresets();
+      });
+    });
+    el.querySelectorAll("[data-preset-fat]").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        const [k, idx] = input.dataset.presetFat.split(":");
+        const num = parseFloat(e.target.value.replace(",", "."));
+        quickPresets[k][parseInt(idx, 10)].fat = isNaN(num) ? undefined : num;
+        saveQuickPresets();
+      });
+    });
+    el.querySelectorAll("[data-preset-carbs]").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        const [k, idx] = input.dataset.presetCarbs.split(":");
+        const num = parseFloat(e.target.value.replace(",", "."));
+        quickPresets[k][parseInt(idx, 10)].carbs = isNaN(num) ? undefined : num;
+        saveQuickPresets();
       });
     });
     el.querySelectorAll("[data-preset-remove]").forEach((btn) => {
@@ -6350,7 +7792,22 @@ function addPreset(kind, labelInputId, kcalInputId) {
   const kcal = parseInt(kcalInput.value, 10);
   if (!label) { labelInput.focus(); return; }
   if (isNaN(kcal) || kcal <= 0) { kcalInput.focus(); return; }
-  quickPresets[kind].push({ id: uid(), label, kcal });
+  const preset = { id: uid(), label, kcal };
+  if (kind === "eaten") {
+    const proteinInput = document.getElementById("newEatenProtein");
+    const fatInput = document.getElementById("newEatenFat");
+    const carbsInput = document.getElementById("newEatenCarbs");
+    const protein = proteinInput ? parseFloat(proteinInput.value.replace(",", ".")) : NaN;
+    const fat = fatInput ? parseFloat(fatInput.value.replace(",", ".")) : NaN;
+    const carbs = carbsInput ? parseFloat(carbsInput.value.replace(",", ".")) : NaN;
+    if (!isNaN(protein)) preset.protein = protein;
+    if (!isNaN(fat)) preset.fat = fat;
+    if (!isNaN(carbs)) preset.carbs = carbs;
+    if (proteinInput) proteinInput.value = "";
+    if (fatInput) fatInput.value = "";
+    if (carbsInput) carbsInput.value = "";
+  }
+  quickPresets[kind].push(preset);
   saveQuickPresets();
   markWeeklyMiscFlag("newPresetAddedWeek");
   labelInput.value = "";
@@ -6420,9 +7877,18 @@ function openAboutModal() {
       </div>
     </div>
   `;
-  document.getElementById("aboutModalCloseBtn").addEventListener("click", openBackupModal);
+  document.getElementById("aboutModalCloseBtn").addEventListener("click", () => {
+    openBackupModal();
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    if (sheet) sheet.scrollTop = aboutModalReturnScrollTop;
+  });
   document.getElementById("aboutModalOverlay").addEventListener("click", (e) => {
-    if (e.target.id === "aboutModalOverlay") { openBackupModal(); reestablishModalMarkerIfStillOpen(); }
+    if (e.target.id === "aboutModalOverlay") {
+      openBackupModal();
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      if (sheet) sheet.scrollTop = aboutModalReturnScrollTop;
+      reestablishModalMarkerIfStillOpen();
+    }
   });
 }
 
@@ -6581,6 +8047,8 @@ function openProfileModal() {
     editingBeltName = null;
     if (profileModalReturnsToSettings) {
       openBackupModal();
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      if (sheet) sheet.scrollTop = profileModalReturnScrollTop;
     } else {
       modalRoot.innerHTML = "";
       if (activeTab === "kalorier") renderKalorier();
@@ -6626,11 +8094,108 @@ function openManageTypesModal() {
             <button class="modal-btn primary" id="addTypeBtn" style="width:44px;padding:0;flex-shrink:0">${ICONS.plus}</button>
           </div>
         </div>
+
+          <div class="toggle-row">
+            <span style="font-size:14px;font-weight:600">Avancerad meny (Kampsport)</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="kampsportAdvancedSectionToggle" ${kampsportAdvancedSectionOpen ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="margin-top:-4px">Utvärdering och submissions för BJJ/SW-pass.</p>
+          <div id="kampsportAdvancedBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${kampsportAdvancedSectionOpen ? "" : "display:none"}">
+
+            <div class="toggle-row">
+              <span style="font-size:14px;font-weight:600">Utvärdering</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="advancedMenuToggle" ${advancedMenuEnabled ? "checked" : ""} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p style="margin-top:-4px">Slå på för att svara på frågor (1-10) efter BJJ/SW-pass.</p>
+
+            <div id="advancedQuestionsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${advancedMenuEnabled ? "" : "display:none"}"></div>
+
+            <div class="toggle-row" id="submissionsToggleRow">
+              <span style="font-size:14px;font-weight:600">Submissions</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="submissionsMenuToggle" ${submissionsMenuEnabled ? "checked" : ""} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p style="margin-top:-4px" id="submissionsToggleHint">Slå på för att välja vilka submissions du fick under BJJ/SW-pass.</p>
+            <div id="submissionTypesList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${submissionsMenuEnabled ? "" : "display:none"}"></div>
+
+          </div>
+          <div class="toggle-row">
+            <span style="font-size:14px;font-weight:600">Avancerad meny (Gym)</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="gymMenuToggle" ${gymMenuEnabled ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="margin-top:-4px">Slå på för att kunna välja vilket gympass du kört.</p>
+          <div id="gymSplitsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
+          <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="gymExercisesHint">Övningar per gympass (för "Starta pass"):</p>
+          <div id="gymExercisesManagement" class="settings-indent" style="display:flex;flex-direction:column;gap:14px;${gymMenuEnabled ? "" : "display:none"}"></div>
+          <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="pbExercisesHint">Övningar för "Personbästa!" (visas när du loggar ett gympass):</p>
+          <div id="pbExercisesList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
+
+          <div class="toggle-row">
+            <span style="font-size:14px;font-weight:600">Avancerad meny (Kondition)</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="konditionMenuToggle" ${konditionMenuEnabled ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p style="margin-top:-4px">Gäller cykel, motionscykel, löpning och egna pass i kategorin kondition.</p>
+          <div id="konditionPbList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${konditionMenuEnabled ? "" : "display:none"}"></div>
+
+
         <div class="modal-close" id="typesModalCloseBtn">${typesModalReturnsToSettings ? "← Tillbaka" : "Stäng"}</div>
       </div>
     </div>
   `;
   renderTypesList();
+  renderAdvancedQuestionsList();
+  renderSubmissionTypesList();
+  renderGymSplitsList();
+  renderGymExercisesManagement();
+  renderPbExercisesList();
+  renderKonditionPbList();
+  document.getElementById("kampsportAdvancedSectionToggle").addEventListener("change", (e) => {
+    kampsportAdvancedSectionOpen = e.target.checked;
+    document.getElementById("kampsportAdvancedBody").style.display = kampsportAdvancedSectionOpen ? "flex" : "none";
+  });
+  document.getElementById("advancedMenuToggle").addEventListener("change", (e) => {
+    advancedMenuEnabled = e.target.checked;
+    saveAdvancedMenuEnabled();
+    document.getElementById("advancedQuestionsList").style.display = advancedMenuEnabled ? "flex" : "none";
+    if (activeTab === "traning") renderTraning();
+  });
+  document.getElementById("submissionsMenuToggle").addEventListener("change", (e) => {
+    submissionsMenuEnabled = e.target.checked;
+    saveSubmissionsMenuEnabled();
+    document.getElementById("submissionTypesList").style.display = submissionsMenuEnabled ? "flex" : "none";
+    if (activeTab === "stats") renderStats();
+    if (activeTab === "traning") renderTraning();
+  });
+  document.getElementById("gymMenuToggle").addEventListener("change", (e) => {
+    gymMenuEnabled = e.target.checked;
+    saveGymMenuEnabled();
+    document.getElementById("gymSplitsList").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymExercisesManagement").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymExercisesHint").style.display = gymMenuEnabled ? "" : "none";
+    document.getElementById("pbExercisesList").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("pbExercisesHint").style.display = gymMenuEnabled ? "" : "none";
+    if (activeTab === "traning") renderTraning();
+  });
+  document.getElementById("konditionMenuToggle").addEventListener("change", (e) => {
+    konditionMenuEnabled = e.target.checked;
+    saveKonditionMenuEnabled();
+    document.getElementById("konditionPbList").style.display = konditionMenuEnabled ? "flex" : "none";
+    if (activeTab === "traning") renderTraning();
+  });
   document.getElementById("addTypeBtn").addEventListener("click", () => {
     const input = document.getElementById("newTypeLabel");
     const colorInput = document.getElementById("newTypeColor");
@@ -6777,6 +8342,8 @@ function closeTypesModal() {
   }
   if (typesModalReturnsToSettings) {
     openBackupModal();
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    if (sheet) sheet.scrollTop = typesModalReturnScrollTop;
   } else if (activeTab === "traning") {
     renderTraning();
   }
@@ -6955,6 +8522,9 @@ function openYearReviewModal() {
     .map((g) => ({ label: g.text, count: yearGymSplitCounts[g.id] || 0 }))
     .filter((r) => r.count > 0)
     .sort((a, b) => b.count - a.count);
+  const yearTotalVolume = gymSessionHistory
+    .filter((s) => s.date.slice(0, 4) === String(currentYear) && s.totalVolume)
+    .reduce((sum, s) => sum + s.totalVolume, 0);
 
   const sortedByMinutes = [...yearTrainingE].filter((e) => e.minutes > 0).sort((a, b) => a.minutes - b.minutes);
   const shortest = sortedByMinutes[0];
@@ -7003,6 +8573,7 @@ function openYearReviewModal() {
           <div class="card" style="background:var(--bg)">
             <div class="card-label" style="margin-bottom:8px">Gympass i år <span style="color:var(--muted2);font-weight:600">${yearGymEntries.length} st</span></div>
             ${yearGymSplitRows.map((row) => `<div class="goal-row"><span class="goal-label">${escapeHtml(row.label)}</span><span class="goal-value">${row.count} pass</span></div>`).join("")}
+            ${yearTotalVolume > 0 ? `<div class="goal-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span class="goal-label">💪 Totalvikt lyft</span><span class="goal-value" style="color:${tabColors.traning}">${Math.round(yearTotalVolume).toLocaleString("sv-SE")} kg</span></div>` : ""}
           </div>
         ` : ""}
         <div class="card" style="background:var(--bg)">
