@@ -57,6 +57,8 @@
     justify-content: space-between;
   }
   header.topbar .title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header.topbar .title-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  header.topbar .app-header-icon { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: block; }
   header.topbar button.icon-btn {
     background: none; border: none; color: var(--muted); cursor: pointer; padding: 6px; display: flex;
   }
@@ -65,11 +67,17 @@
     position: fixed; inset: 0; background: var(--overlay); z-index: 50;
     display: flex; align-items: flex-end; justify-content: center;
   }
+  .modal-overlay-top { align-items: flex-start; }
   .modal-sheet {
     background: var(--card-bg); border: 1px solid var(--border2); border-radius: 20px 20px 0 0;
     width: 100%; max-width: 480px; padding: 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 14px;
     max-height: 85vh; max-height: 85dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .modal-sheet-top {
+    border-radius: 0 0 20px 20px;
+    padding-top: calc(20px + env(safe-area-inset-top));
+    padding-bottom: 24px;
   }
   .modal-sheet h2 { margin: 0; font-size: 17px; font-weight: 700; }
   .modal-sheet p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
@@ -111,6 +119,7 @@
   }
   nav.tabbar svg { width: 22px; height: 22px; }
   nav.tabbar.icon-size-large svg { width: 34px; height: 34px; }
+  nav.tabbar.icon-size-tiny svg { width: 16px; height: 16px; }
   nav.tabbar span { font-size: 11px; font-weight: 500; }
   nav.tabbar button.active span { font-weight: 700; }
 
@@ -257,7 +266,10 @@
 <body>
 <div id="app">
   <header class="topbar">
-    <span class="title">Workout Tracker</span>
+    <div class="title-group">
+      <img id="appHeaderIcon" class="app-header-icon" alt="" />
+      <span class="title">Workout Tracker</span>
+    </div>
     <button class="icon-btn" id="settingsBtn" aria-label="Inställningar"></button>
   </header>
   <div class="backup-banner" id="backupBanner">
