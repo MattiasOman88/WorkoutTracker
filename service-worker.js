@@ -1,4 +1,4 @@
-const CACHE_NAME = "traningslogg-v221";
+const CACHE_NAME = "traningslogg-v235";
 const ASSETS = [
   "./index.html",
   "./app.js",
@@ -12,6 +12,7 @@ const ASSETS = [
 const CDN_ASSETS = [
   "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js",
 ];
 
 self.addEventListener("install", (event) => {
