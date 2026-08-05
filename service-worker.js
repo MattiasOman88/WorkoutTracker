@@ -1,4 +1,4 @@
-const CACHE_NAME = "traningslogg-v235";
+const CACHE_NAME = "traningslogg-v237";
 const ASSETS = [
   "./index.html",
   "./app.js",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./icons/icon-192-maskable.png",
   "./icons/icon-512-maskable.png",
   "./icons/belt-white.png",
+  "./badges/manifest.json",
 ];
 const CDN_ASSETS = [
   "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js",
@@ -15,13 +16,31 @@ const CDN_ASSETS = [
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js",
 ];
 
+// Prestations-bilderna ligger som riktiga filer under ./badges/ istället för
+// inbakade i app.js (sparar ~33MB och gör att kodändringar inte tvingar en
+// omladdning av alla bilder). badges/manifest.json listar alla filnamn så de
+// kan förhandscachas här, precis som de tidigare alltid fanns offline direkt.
+async function getBadgeAssetUrls() {
+  try {
+    const res = await fetch("./badges/manifest.json");
+    if (!res.ok) return [];
+    const list = await res.json();
+    return Array.isArray(list) ? list.map((p) => "./" + p) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(ASSETS).then(() =>
-        // CDN assets are best-effort: don't fail the whole install if one is unreachable.
-        Promise.allSettled(CDN_ASSETS.map((u) => cache.add(u)))
-      )
+      cache.addAll(ASSETS)
+        .then(() => getBadgeAssetUrls())
+        .then((badgeUrls) => Promise.allSettled(badgeUrls.map((u) => cache.add(u))))
+        .then(() =>
+          // CDN assets are best-effort: don't fail the whole install if one is unreachable.
+          Promise.allSettled(CDN_ASSETS.map((u) => cache.add(u)))
+        )
     ).then(() => self.skipWaiting())
   );
 });
