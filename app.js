@@ -100,11 +100,89 @@ function loadThemeMode() {
 function saveThemeMode() {
   try { localStorage.setItem("theme_v1", themeMode); } catch (e) { /* ignore */ }
 }
+
+// ---- Tonad bakgrundsfärg ----
+// Man väljer valfri färg på ett vanligt färghjul, men vi struntar helt i
+// mättnad/ljushet från det valet - bara nyansen (hue) tas med vidare. Den
+// nyansen läggs sedan på appens egna, redan beprövade mörka/ljusa nivåer
+// (samma mättnad/ljushet som standardtemat alltid haft, bara med bytt
+// nyans) så bakgrunden aldrig kan bli olöslig kontrastmässigt - även om man
+// klickar på skrikande röd i hjulet blir resultatet en dov vinröd ton,
+// aldrig ren röd.
+function hexToHue(hex) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16) / 255;
+  const g = parseInt(h.substring(2, 4), 16) / 255;
+  const b = parseInt(h.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return 0;
+  let hue;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  hue *= 60;
+  if (hue < 0) hue += 360;
+  return hue;
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const toHex = (x) => Math.round(255 * x).toString(16).padStart(2, "0");
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+// Mättnad/ljushet-nivåer plockade rakt av från appens befintliga standardtema
+// (samma tal som #0F1115/#14161C/... resp. #F4F5F7/#E4E6EB/... redan har) -
+// bg2/card-bg i ljust läge hålls medvetet vita (ingen ton) så korten
+// fortsätter poppa mot den tonade sidbakgrunden, precis som idag.
+const BG_TINT_RECIPE = {
+  dark: {
+    "--bg": [16.7, 7.1], "--bg2": [16.7, 9.4], "--card-bg": [17.9, 11.0],
+    "--border": [15.5, 13.9], "--border2": [14.6, 17.5], "--input-bg": [16.7, 7.1],
+  },
+  light: {
+    "--bg": [15.8, 96.3], "--border": [14.9, 90.8],
+    "--border2": [11.4, 86.3], "--input-bg": [15.4, 94.9],
+  },
+};
+function loadBgAccentHex() {
+  try { return localStorage.getItem("bg_accent_hex_v1") || null; } catch (e) { return null; }
+}
+function saveBgAccentHex() {
+  try {
+    if (bgAccentHex) localStorage.setItem("bg_accent_hex_v1", bgAccentHex);
+    else localStorage.removeItem("bg_accent_hex_v1");
+  } catch (e) { /* ignore */ }
+}
+let bgAccentHex = loadBgAccentHex();
+function applyBgTint() {
+  const root = document.documentElement;
+  const allVars = ["--bg", "--bg2", "--card-bg", "--border", "--border2", "--input-bg"];
+  let resolvedBg = themeMode === "light" ? "#F4F5F7" : "#0F1115";
+  if (!bgAccentHex) {
+    allVars.forEach((v) => root.style.removeProperty(v));
+  } else {
+    const hue = hexToHue(bgAccentHex);
+    const recipe = themeMode === "light" ? BG_TINT_RECIPE.light : BG_TINT_RECIPE.dark;
+    allVars.forEach((v) => {
+      if (recipe[v]) {
+        const hex = hslToHex(hue, recipe[v][0], recipe[v][1]);
+        root.style.setProperty(v, hex);
+        if (v === "--bg") resolvedBg = hex;
+      } else {
+        root.style.removeProperty(v);
+      }
+    });
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", resolvedBg);
+}
 function applyTheme() {
   if (themeMode === "light") document.documentElement.setAttribute("data-theme", "light");
   else document.documentElement.removeAttribute("data-theme");
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", themeMode === "light" ? "#F4F5F7" : "#0F1115");
+  applyBgTint();
 }
 let themeMode = loadThemeMode();
 applyTheme();
@@ -124,6 +202,46 @@ function vibrate(pattern) {
   if (navigator.vibrate) {
     try { navigator.vibrate(pattern || 15); } catch (e) { /* ignore */ }
   }
+}
+
+function loadSoundEffects() {
+  try {
+    const raw = localStorage.getItem("sound_effects_v1");
+    return raw === null ? true : raw === "true";
+  } catch (e) { return true; }
+}
+function saveSoundEffects() {
+  try { localStorage.setItem("sound_effects_v1", String(soundEffectsEnabled)); } catch (e) { /* ignore */ }
+}
+let soundEffectsEnabled = loadSoundEffects();
+let sharedAudioCtx = null;
+// Kort, generad klocksplinga (inga ljudfiler behövs) som spelas upp när en
+// grattis-popup visas - level-up får en extra fjärde, högre ton så den
+// känns lite större än en vanlig prestation.
+function playCelebrationChime(kind) {
+  if (!soundEffectsEnabled) return;
+  try {
+    if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = sharedAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+    const notes = kind === "levelup" ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = now + i * 0.09;
+      const dur = 0.22;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.18, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + dur + 0.02);
+    });
+  } catch (e) { /* ignore - ljud stöds inte/blockeras */ }
 }
 const MONTHS_SV = ["Jan","Feb","Mar","Apr","Maj","Jun","Jul","Aug","Sep","Okt","Nov","Dec"];
 const MONTHS_SV_FULL = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
@@ -225,6 +343,151 @@ function saveProfile() {
   try { localStorage.setItem("profile_v1", JSON.stringify(profile)); } catch (e) { /* ignore */ }
 }
 let profile = loadProfile();
+// Läser en uppladdad bildfil, beskär den till kvadrat (center-crop) och
+// skalar ner till maxSize px innan den sparas som JPEG-data-URL. Håller
+// profilbilden liten (oftast under ~40 kB) så den inte gör backup/molnsynk
+// tung, och undviker att spara hela originalfoton (kan vara flera MB).
+function resizeImageFileToDataUrl(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Kunde inte läsa filen"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Kunde inte tolka bilden"));
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = maxSize;
+        canvas.height = maxSize;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, maxSize, maxSize);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------------- Ramar/glow (profilbild & flikikoner, låses upp med level) ---------------- */
+// Samma katalog driver både profilbildens ram och flikarnas glow-effekt, så
+// de låses upp i takt med varandra. Bara rörliga effekter finns kvar (inga
+// statiska färger) - den första (Komet - guld) är gratis från level 1, resten
+// låses upp var 5:e level därefter.
+function hexToRgba(hex, alpha) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+// Ordning: enkla enfärgade kometer först (starter-känsla), sen pulserande
+// röd som första "mekanik-uppgraderingen", sen dina favoriter eld/frost som
+// ett tema-par i mitten, distinkta mekaniker (sonar/glitter/prickar), sen
+// dubbelkomet som en vidareutveckling av kometerna, och till sist RGB-ringen
+// + norrsken som storfinal - de mest "premium" och lika varandra (fulla,
+// roterande regnbågsringar), så de känns som toppen att nå.
+const PROFILE_FRAMES = {
+  cometGold: { label: "Komet — guld", type: "comet", color: "#FFD24C" },
+  cometGreen: { label: "Komet — grön", type: "comet", color: "#34D97B" },
+  cometPurple: { label: "Komet — lila", type: "comet", color: "#9B6BFF" },
+  cometPink: { label: "Komet — rosa", type: "comet", color: "#FF3DB0" },
+  pulseRed: { label: "Pulserande röd", type: "pulse", color: "#E24B4A" },
+  fireRing: { label: "Eld-ring", type: "fire" },
+  frostRing: { label: "Frost-ring", type: "frost" },
+  sonarRainbow: { label: "Sonar-puls", type: "sonarRainbow" },
+  glitterRainbow: { label: "Glitter-ring", type: "glitter", color: "#FF2EC4" },
+  chaseDotsRainbow: { label: "Jagande prickar — 3", type: "chaseRainbow" },
+  chaseDotsRainbow5: { label: "Jagande prickar — 5", type: "chaseRainbow5" },
+  dualComet: { label: "Dubbelkomet", type: "dualComet", color: "#FF4D4D" },
+  dualCometRainbow: { label: "Dubbelkomet — RGB", type: "dualCometRainbow" },
+  rainbow: { label: "RGB-ring", type: "rainbow" },
+  aurora: { label: "Norrsken", type: "aurora" },
+};
+const PROFILE_FRAME_UNLOCK_LEVEL = {
+  cometGold: 1,
+  cometGreen: 5, cometPurple: 10, cometPink: 15,
+  pulseRed: 20, fireRing: 25, frostRing: 30,
+  sonarRainbow: 35, glitterRainbow: 40, chaseDotsRainbow: 45, chaseDotsRainbow5: 50,
+  dualComet: 55, dualCometRainbow: 60, rainbow: 65, aurora: 70,
+};
+// Migrering av äldre/borttagna nycklar till sina närmaste nya motsvarigheter,
+// så ingen tappar sitt val bara för att katalogen ändrats.
+const PROFILE_FRAME_KEY_MIGRATIONS = {
+  comet: "cometGold", gold: "cometGold", orange: "cometGold", cyan: "frostRing", pink: "cometPink",
+  sonarGreen: "sonarRainbow", glitterGold: "glitterRainbow", chaseDots: "chaseDotsRainbow",
+  cometCyan: "frostRing", dashRing: "glitterRainbow", glitchTail: "cometGold",
+  white: "cometGold", yellow: "cometGold", blue: "frostRing", green: "cometGreen", red: "pulseRed", purple: "cometPurple",
+};
+// null/ogiltigt val faller alltid tillbaka på "cometGold" - den är alltid upplåst.
+function resolveProfileFrame() {
+  const key = PROFILE_FRAME_KEY_MIGRATIONS[profile.frame] || profile.frame;
+  return key && PROFILE_FRAMES[key] ? key : "cometGold";
+}
+// Bygger style/klass för ramen/glowen runt en bild eller flikikon.
+// `padding` avgör hur tjock ringen är (samma enhet som bildens storlek).
+// `shape` är "circle" (standard, t.ex. profilbild/flikikoner) eller "octagon"
+// (för bälte-badgen, som ska följa den åttkantiga formen i själva konstverket
+// istället för en cirkel runt hela bildrutan).
+function profileFrameWrapStyle(frameKey, padding, shape) {
+  const f = PROFILE_FRAMES[frameKey] || PROFILE_FRAMES.cometGold;
+  const isOctagon = shape === "octagon";
+  const shapeClass = isOctagon ? " frame-shape-octagon" : "";
+  const base = `padding:${padding}px;${isOctagon ? "" : "border-radius:50%;"}display:inline-flex;align-items:center;justify-content:center;flex-shrink:0`;
+  if (f.type === "rainbow") return { className: "avatar-frame-rainbow" + shapeClass, style: base };
+  if (f.type === "dualCometRainbow") return { className: "avatar-frame-dualcomet-rainbow" + shapeClass, style: base };
+  if (f.type === "comet") {
+    return { className: "avatar-frame-comet" + shapeClass, style: `${base};--comet-c:${hexToRgba(f.color, 0.9)};--comet-c-soft:${hexToRgba(f.color, 0.15)};--comet-glow:${hexToRgba(f.color, 0.35)}` };
+  }
+  if (f.type === "dualComet") {
+    return { className: "avatar-frame-dualcomet" + shapeClass, style: `${base};--comet-c:${hexToRgba(f.color, 0.9)};--comet-c2:${hexToRgba(f.color, 0.6)};--comet-glow:${hexToRgba(f.color, 0.35)}` };
+  }
+  if (f.type === "fire") return { className: "avatar-frame-fire" + shapeClass, style: base };
+  if (f.type === "frost") return { className: "avatar-frame-frost" + shapeClass, style: base };
+  if (f.type === "pulse") return { className: "avatar-frame-pulse" + shapeClass, style: `${base};background:${f.color};--pulse-c:${hexToRgba(f.color, isOctagon ? 0.85 : 0.6)}` };
+  if (f.type === "sonarRainbow") return { className: "avatar-frame-sonar-rainbow" + shapeClass, style: base };
+  if (f.type === "glitter") return { className: "avatar-frame-glitter" + shapeClass, style: `${base};--glitter-c:${f.color}` };
+  if (f.type === "chaseRainbow") return { className: "avatar-frame-chase-rainbow" + shapeClass, style: base };
+  if (f.type === "chaseRainbow5") return { className: "avatar-frame-chase-rainbow5" + shapeClass, style: base };
+  if (f.type === "aurora") return { className: "avatar-frame-aurora" + shapeClass, style: base };
+  return { className: "" + (isOctagon ? "frame-shape-octagon" : ""), style: `${base};background:${f.color};${isOctagon ? `filter:drop-shadow(0 0 5px ${f.glow})` : `box-shadow:0 0 10px ${f.glow}`}` };
+}
+// Representativ hex-färg för en ram/effekt, används t.ex. för att tona
+// text/etiketter i samma anda som effekten (rainbow/fire/frost har ingen
+// enskild färg annars).
+function frameAccentColor(frameKey) {
+  const f = PROFILE_FRAMES[frameKey];
+  if (!f) return "#8080FF";
+  if (f.color) return f.color;
+  if (f.type === "rainbow" || f.type === "dualCometRainbow" || f.type === "sonarRainbow" || f.type === "chaseRainbow" || f.type === "chaseRainbow5" || f.type === "aurora") return "#FF3DB0";
+  if (f.type === "fire") return "#E24B4A";
+  if (f.type === "frost") return "#2DE0FF";
+  return "#8080FF";
+}
+// Färdig <div><img></div>-HTML för profilbilden med aktuell ram, i valfri
+// storlek. Returnerar null om ingen bild är uppladdad (anroparen visar då
+// sin egen platshållare istället).
+function profileAvatarHTML(size, padding) {
+  if (!profile.avatar) return null;
+  const frame = profileFrameWrapStyle(resolveProfileFrame(), padding);
+  return `<div class="${frame.className}" style="${frame.style}"><img src="${profile.avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" /></div>`;
+}
+// De 10 animerade "special"-effekterna - delas mellan profilramen och
+// Flikfärgens glow-väljare. De vanliga solida färgerna väljs som vanligt via
+// färgrutan i Flikfärg, inte via denna lista.
+const FRAME_EFFECT_KEYS = [
+  "cometGold", "cometGreen", "cometPurple", "cometPink",
+  "pulseRed", "fireRing", "frostRing",
+  "sonarRainbow", "glitterRainbow", "chaseDotsRainbow", "chaseDotsRainbow5",
+  "dualComet", "dualCometRainbow", "rainbow", "aurora",
+];
+
 let calorieLog = loadArr("calorie_log");
 function persistCalorieLog() { saveArr("calorie_log", calorieLog); }
 function addDays(iso, days) {
@@ -733,6 +996,22 @@ function saveBeltSectionOpen() {
 let beltSectionOpen = loadBeltSectionOpen();
 let editingBeltName = null;
 
+function loadProfileFramePickerExpanded() {
+  try { return localStorage.getItem("profile_frame_picker_expanded_v1") !== "false"; } catch (e) { return true; }
+}
+function saveProfileFramePickerExpanded() {
+  try { localStorage.setItem("profile_frame_picker_expanded_v1", String(profileFramePickerExpanded)); } catch (e) { /* ignore */ }
+}
+let profileFramePickerExpanded = loadProfileFramePickerExpanded();
+
+function loadBeltBadgeFrameEnabled() {
+  try { return localStorage.getItem("belt_badge_frame_enabled_v1") !== "false"; } catch (e) { return true; }
+}
+function saveBeltBadgeFrameEnabled() {
+  try { localStorage.setItem("belt_badge_frame_enabled_v1", String(beltBadgeFrameEnabled)); } catch (e) { /* ignore */ }
+}
+let beltBadgeFrameEnabled = loadBeltBadgeFrameEnabled();
+
 function highestActiveBeltName() {
   const tiers = BELT_TIERS.slice(0, 5);
   let highest = null;
@@ -1240,7 +1519,74 @@ const EMBLEM_ICON_TRANING = "badges/EMBLEM_ICON_TRANING.png";
 const EMBLEM_ICON_KALORIER = "badges/EMBLEM_ICON_KALORIER.png";
 const EMBLEM_ICON_STATS = "badges/EMBLEM_ICON_STATS.png";
 const APP_ICON_IMG = "badges/APP_ICON_IMG.png";
-const EMBLEM_ICON_TRANING_RUN = "badges/EMBLEM_ICON_TRANING_RUN.png";
+// EMBLEM_ICON_TRANING_RUN_GREEN behålls som fallback-ikon (används när
+// levelTheme är "run" och man inte valt en egen ikon, se längre ner) även om
+// den inte längre är ett eget val i väljaren.
+const EMBLEM_ICON_TRANING_RUN_GREEN = "badges/EMBLEM_ICON_TRANING_RUN_GREEN.png";
+// Ny bildomgång (augusti), ersätter alla tidigare extra-ikoner - namngivna
+// efter numret användaren gav dem så länge, byts till beskrivande namn när
+// det är bestämt vilka som ska vara kvar permanent.
+const EMBLEM_ICON_TRANING_02 = "badges/EMBLEM_ICON_TRANING_02.png";
+const EMBLEM_ICON_TRANING_03 = "badges/EMBLEM_ICON_TRANING_03.png";
+const EMBLEM_ICON_TRANING_04 = "badges/EMBLEM_ICON_TRANING_04.png";
+const EMBLEM_ICON_TRANING_05 = "badges/EMBLEM_ICON_TRANING_05.png";
+const EMBLEM_ICON_TRANING_06 = "badges/EMBLEM_ICON_TRANING_06.png";
+const EMBLEM_ICON_TRANING_07 = "badges/EMBLEM_ICON_TRANING_07.png";
+const EMBLEM_ICON_TRANING_08 = "badges/EMBLEM_ICON_TRANING_08.png";
+const EMBLEM_ICON_TRANING_09 = "badges/EMBLEM_ICON_TRANING_09.png";
+const EMBLEM_ICON_TRANING_10 = "badges/EMBLEM_ICON_TRANING_10.png";
+const EMBLEM_ICON_TRANING_11 = "badges/EMBLEM_ICON_TRANING_11.png";
+const EMBLEM_ICON_TRANING_12 = "badges/EMBLEM_ICON_TRANING_12.png";
+// Val av Träningsflikens ikon, fristående från levelTheme. null = auto
+// (samma beteende som tidigare: grön löparikon om temat är "run", annars
+// grön hantel). Bara de 12 bilderna som ska finnas kvar: standard-hanteln +
+// de 11 nya.
+const TRAINING_TAB_ICON_CHOICES = {
+  gym: EMBLEM_ICON_TRANING,
+  training2: EMBLEM_ICON_TRANING_02,
+  training3: EMBLEM_ICON_TRANING_03,
+  training4: EMBLEM_ICON_TRANING_04,
+  training5: EMBLEM_ICON_TRANING_05,
+  training6: EMBLEM_ICON_TRANING_06,
+  training7: EMBLEM_ICON_TRANING_07,
+  training8: EMBLEM_ICON_TRANING_08,
+  training9: EMBLEM_ICON_TRANING_09,
+  training10: EMBLEM_ICON_TRANING_10,
+  training11: EMBLEM_ICON_TRANING_11,
+  training12: EMBLEM_ICON_TRANING_12,
+};
+// gym (grön hantel) är alltid upplåst - det är grund-ikonen. Resten låses
+// upp var 5:e nivå från och med level 5, i samma takt som
+// profilram/flikfärg-effekterna.
+const TRAINING_TAB_ICON_UNLOCK_LEVEL = {
+  gym: 1,
+  training2: 5,
+  training3: 10,
+  training4: 15,
+  training5: 20,
+  training6: 25,
+  training7: 30,
+  training8: 35,
+  training9: 40,
+  training10: 45,
+  training11: 50,
+  training12: 55,
+};
+function loadTrainingTabIcon() {
+  try {
+    const v = localStorage.getItem("training_tab_icon_v1") || null;
+    // Migrering: nyckeln "run" byttes till "runBlue" när grön/blå löpare
+    // blev separata val.
+    return v === "run" ? "runBlue" : v;
+  } catch (e) { return null; }
+}
+function saveTrainingTabIcon() {
+  try {
+    if (trainingTabIcon) localStorage.setItem("training_tab_icon_v1", trainingTabIcon);
+    else localStorage.removeItem("training_tab_icon_v1");
+  } catch (e) { /* ignore */ }
+}
+let trainingTabIcon = loadTrainingTabIcon(); // null | "gym" | "gymOrange" | "runBlue" | "runGreen" | "man" | "weight" | "womanman" | "mma" | "sw" | "bjj"
 const TAB_DEFS = {
   vikt: { label: "Vikt", icon: "scale", emblemImage: EMBLEM_ICON_VIKT, imgSizeSmall: 19, imgSizeMedium: 27, imgSizeLarge: 42 },
   traning: { label: "Träning", icon: "dumbbell", emblemImage: EMBLEM_ICON_TRANING, imgSizeSmall: 15, imgSizeMedium: 22, imgSizeLarge: 34 },
@@ -1272,6 +1618,14 @@ function rebuildTabs() {
 let TABS = [];
 rebuildTabs();
 
+// Delad av renderNav() och renderTabOrderList() så Träningsflikens ikon
+// visas konsekvent överallt: manuellt val om satt, annars auto (grön
+// löpare vid tema Löpare, annars grön hantel) - precis som ursprungsläget.
+function resolveTabEmblem(t) {
+  if (t.key !== "traning") return t.emblemImage;
+  return TRAINING_TAB_ICON_CHOICES[trainingTabIcon] || (levelTheme === "run" ? EMBLEM_ICON_TRANING_RUN_GREEN : EMBLEM_ICON_TRANING);
+}
+
 function renderNav() {
   const isLarge = navIconSize === "large";
   const isTiny = navIconSize === "tiny";
@@ -1280,10 +1634,20 @@ function renderNav() {
   tabbar.innerHTML = TABS.map((t) => {
     const isActive = activeTab === t.key;
     const color = navGlowColors[t.key];
-    const emblemSrc = (t.key === "traning" && levelTheme === "run") ? EMBLEM_ICON_TRANING_RUN : t.emblemImage;
-    const iconHTML = `<img src="${emblemSrc}" alt="${t.label}" style="width:${badgeSize + 6}px;height:${badgeSize + 6}px;object-fit:contain;display:block;flex-shrink:0;${isActive ? `filter:drop-shadow(0 0 4px ${color});` : "opacity:0.65;"}" />`;
+    const isEffect = FRAME_EFFECT_KEYS.includes(color);
+    const emblemSrc = resolveTabEmblem(t);
+    const outerSize = badgeSize + 6;
+    const innerSize = outerSize - 2;
+    let iconHTML;
+    if (isActive && isEffect) {
+      const frame = profileFrameWrapStyle(color, 1);
+      iconHTML = `<div class="${frame.className}" style="width:${outerSize}px;height:${outerSize}px;${frame.style}"><img src="${emblemSrc}" alt="${t.label}" style="width:${innerSize}px;height:${innerSize}px;object-fit:contain;display:block" /></div>`;
+    } else {
+      iconHTML = `<img src="${emblemSrc}" alt="${t.label}" style="width:${outerSize}px;height:${outerSize}px;object-fit:contain;display:block;flex-shrink:0;${isActive ? `filter:drop-shadow(0 0 4px ${color});` : "opacity:0.65;"}" />`;
+    }
+    const textColor = isEffect ? frameAccentColor(color) : color;
     return `
-      <button data-tab="${t.key}" class="${isActive ? "active" : ""}" style="${isActive ? `color:${color}` : ""}">
+      <button data-tab="${t.key}" class="${isActive ? "active" : ""}" style="${isActive ? `color:${textColor}` : ""}">
         ${iconHTML}
         ${showNavLabels ? `<span>${t.label}</span>` : ""}
       </button>
@@ -1786,6 +2150,12 @@ function longestConsecutiveRunSince(dates, sinceDate) {
 }
 
 function isTraining(e) { return e.type !== "Sjuk" && e.type !== "Skadad"; }
+// Summan av alla loggade träningsminuter totalt - används av de timbaserade
+// prestationerna (10 timmar ... 2000 timmar, Lucky 777) så uträkningen bara
+// behöver skrivas på ett ställe.
+function totalTrainingMinutes() {
+  return workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0);
+}
 function typeCategory(typeKey) {
   const t = trainingTypes.find((x) => x.key === typeKey);
   return t ? t.category : null;
@@ -2320,6 +2690,17 @@ function saveDebugXpOverride() {
   try { localStorage.setItem("debug_xp_bonus_v1", String(debugXpOverride)); } catch (e) { /* ignore */ }
 }
 let debugXpOverride = loadDebugXpOverride();
+
+// Debug-flagga: visar alla flikikoner och profilram/flik-sken som upplåsta
+// oavsett nuvarande level, utan att röra riktig XP/level/bälte. Bara till för
+// att kunna förhandsgranska hur alla val ser ut.
+function loadDebugForceUnlockCosmetics() {
+  try { return localStorage.getItem("debug_force_unlock_cosmetics_v1") === "1"; } catch (e) { return false; }
+}
+function saveDebugForceUnlockCosmetics() {
+  try { localStorage.setItem("debug_force_unlock_cosmetics_v1", debugForceUnlockCosmetics ? "1" : "0"); } catch (e) { /* ignore */ }
+}
+let debugForceUnlockCosmetics = loadDebugForceUnlockCosmetics();
 
 function loadLogXp() {
   try { return parseInt(localStorage.getItem("log_xp_v1"), 10) || 0; } catch (e) { return 0; }
@@ -2876,9 +3257,9 @@ const ACHIEVEMENTS = [
     check: () => bingoLifetimeStats.anyRing, progress: () => ({ current: bingoLifetimeStats.anyRing ? 1 : 0, target: 1 }) },
   { id: "bingo_full", title: "Full bricka!", desc: "Klarat en hel Submission-bingo-bricka.", icon: "star", xp: 600, badgeImage: BADGE_IMG_BINGO_FULL, prestige: true,
     check: () => bingoLifetimeStats.fullCount >= 1, progress: () => ({ current: bingoLifetimeStats.fullCount, target: 1 }) },
-  { id: "bingo_full_5", title: "5 fulla brickor", desc: "Klarat 5 hela Submission-bingo-brickor.", icon: "snowflake", xp: 3000, badgeImage: BADGE_IMG_BINGO_FULL_5, prestige: true,
+  { id: "bingo_full_5", title: "5 fulla brickor", desc: "Klarat 5 hela Submission-bingo-brickor.", icon: "snowflake", xp: 7500, badgeImage: BADGE_IMG_BINGO_FULL_5, prestige: true,
     check: () => bingoLifetimeStats.fullCount >= 5, progress: () => ({ current: bingoLifetimeStats.fullCount, target: 5 }) },
-  { id: "bingo_full_10", title: "10 fulla brickor", desc: "Klarat 10 hela Submission-bingo-brickor.", icon: "flower", xp: 10000, badgeImage: BADGE_IMG_BINGO_FULL_10, prestige: true,
+  { id: "bingo_full_10", title: "10 fulla brickor", desc: "Klarat 10 hela Submission-bingo-brickor.", icon: "flower", xp: 15000, badgeImage: BADGE_IMG_BINGO_FULL_10, prestige: true,
     check: () => bingoLifetimeStats.fullCount >= 10, progress: () => ({ current: bingoLifetimeStats.fullCount, target: 10 }) },
   { id: "bingo_2lines", title: "2 rader", desc: "Fått minst 2 rader i samma Submission-bingo-bricka.", icon: "layers", xp: 75, badgeImage: BADGE_IMG_BINGO_2LINES, prestige: true,
     check: () => (bingoLifetimeStats.lines2Count || 0) >= 1, progress: () => ({ current: bingoLifetimeStats.lines2Count || 0, target: 1 }) },
@@ -2915,36 +3296,36 @@ const ACHIEVEMENTS = [
     progress: () => ({ current: new Set(workoutEntries.filter(isTraining).map((e) => e.type)).size, target: 4 }) },
   { id: "allround", title: "Allround-atlet", desc: "Logga minst ett pass för varje träningskategori.", icon: "puzzle", xp: 1100, badgeImage: OVRIGA_BADGE_IMG_12, prestige: true,
     check: () => allTrainingTypesUsed() },
-  { id: "hours_10", title: "10 timmar", desc: "Samla 10 timmars träning totalt.", icon: "clock", xp: 100, badgeImage: TRANINGSTID_BADGE_IMG_1, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 600,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 600 }) },
-  { id: "hours_25", title: "25 timmar", desc: "Samla 25 timmars träning totalt.", icon: "hourglass", xp: 900, badgeImage: TRANINGSTID_BADGE_IMG_4, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 1500,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 1500 }) },
-  { id: "hours_50", title: "50 timmar", desc: "Samla 50 timmars träning totalt.", icon: "battery", xp: 1300, badgeImage: TRANINGSTID_BADGE_IMG_6, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 3000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 3000 }) },
-  { id: "hours_100", title: "100 timmar", desc: "Samla 100 timmars träning totalt.", icon: "heart", xp: 2500, badgeImage: TRANINGSTID_BADGE_IMG_12, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 6000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 6000 }) },
-  { id: "hours_250", title: "250 timmar", desc: "Samla 250 timmars träning totalt.", icon: "flame", xp: 4700, badgeImage: TRANINGSTID_BADGE_IMG_13, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 15000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 15000 }) },
-  { id: "hours_500", title: "500 timmar", desc: "Samla 500 timmars träning totalt.", icon: "gem", xp: 6800, badgeImage: TRANINGSTID_BADGE_IMG_14, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 30000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 30000 }) },
-  { id: "hours_750", title: "750 timmar", desc: "Samla 750 timmars träning totalt.", icon: "diamond", xp: 9400, badgeImage: TRANINGSTID_BADGE_IMG_15, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 45000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 45000 }) },
-  { id: "hours_1000", title: "1000 timmar", desc: "Samla 1000 timmars träning totalt.", icon: "crown", xp: 9600, badgeImage: TRANINGSTID_BADGE_IMG_16, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 60000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 60000 }) },
-  { id: "hours_1500", title: "1500 timmar", desc: "Samla 1500 timmars träning totalt.", icon: "sparkles", xp: 10800, badgeImage: TRANINGSTID_BADGE_IMG_17, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 90000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 90000 }) },
-  { id: "hours_2000", title: "2000 timmar", desc: "Samla 2000 timmars träning totalt.", icon: "trophy", xp: 15000, badgeImage: TRANINGSTID_BADGE_IMG_18, prestige: true,
-    check: () => workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0) >= 120000,
-    progress: () => ({ current: workoutEntries.filter(isTraining).reduce((s, e) => s + e.minutes, 0), target: 120000 }) },
+  { id: "hours_10", title: "10 timmar", desc: "Samla 10 timmars träning totalt.", icon: "clock", xp: 100, badgeImage: TRANINGSTID_BADGE_IMG_1, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 600,
+    progress: () => ({ current: totalTrainingMinutes(), target: 600 }) },
+  { id: "hours_25", title: "25 timmar", desc: "Samla 25 timmars träning totalt.", icon: "hourglass", xp: 900, badgeImage: TRANINGSTID_BADGE_IMG_4, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 1500,
+    progress: () => ({ current: totalTrainingMinutes(), target: 1500 }) },
+  { id: "hours_50", title: "50 timmar", desc: "Samla 50 timmars träning totalt.", icon: "battery", xp: 1300, badgeImage: TRANINGSTID_BADGE_IMG_6, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 3000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 3000 }) },
+  { id: "hours_100", title: "100 timmar", desc: "Samla 100 timmars träning totalt.", icon: "heart", xp: 2500, badgeImage: TRANINGSTID_BADGE_IMG_12, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 6000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 6000 }) },
+  { id: "hours_250", title: "250 timmar", desc: "Samla 250 timmars träning totalt.", icon: "flame", xp: 4700, badgeImage: TRANINGSTID_BADGE_IMG_13, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 15000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 15000 }) },
+  { id: "hours_500", title: "500 timmar", desc: "Samla 500 timmars träning totalt.", icon: "gem", xp: 6800, badgeImage: TRANINGSTID_BADGE_IMG_14, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 30000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 30000 }) },
+  { id: "hours_750", title: "750 timmar", desc: "Samla 750 timmars träning totalt.", icon: "diamond", xp: 9400, badgeImage: TRANINGSTID_BADGE_IMG_15, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 45000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 45000 }) },
+  { id: "hours_1000", title: "1000 timmar", desc: "Samla 1000 timmars träning totalt.", icon: "crown", xp: 9600, badgeImage: TRANINGSTID_BADGE_IMG_16, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 60000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 60000 }) },
+  { id: "hours_1500", title: "1500 timmar", desc: "Samla 1500 timmars träning totalt.", icon: "sparkles", xp: 10800, badgeImage: TRANINGSTID_BADGE_IMG_17, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 90000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 90000 }) },
+  { id: "hours_2000", title: "2000 timmar", desc: "Samla 2000 timmars träning totalt.", icon: "trophy", xp: 15000, badgeImage: TRANINGSTID_BADGE_IMG_18, prestige: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 120000,
+    progress: () => ({ current: totalTrainingMinutes(), target: 120000 }) },
   { id: "hours_week_5", title: "5 timmar på en vecka", desc: "Loggat minst 5 timmars träning under samma vecka.", icon: "target", xp: 450, badgeImage: TRANINGSTID_BADGE_IMG_2, prestige: true,
     check: () => maxMinutesInAnyWeek(isTraining) >= 300,
     progress: () => ({ current: maxMinutesInAnyWeek(isTraining), target: 300 }) },
@@ -3067,7 +3448,7 @@ const ACHIEVEMENTS = [
   // Submissions
   { id: "submission_first", title: "Första submission", desc: "Loggat din första submission.", icon: "trophy", xp: 25, badgeImage: SUBMISSION_BADGE_IMG_1,
     check: () => workoutEntries.some((e) => e.submissions && e.submissions.length > 0) },
-  { id: "choke_wizard", title: "Choke Wizard", desc: "Fått in alla Chokes på listan.", icon: "wind", xp: 750, badgeImage: SUBMISSION_BADGE_IMG_12, prestige: true,
+  { id: "choke_wizard", title: "Choke Wizard", desc: "Fått in alla Chokes på listan.", icon: "wind", xp: 1500, badgeImage: SUBMISSION_BADGE_IMG_12, prestige: true,
     check: () => {
       const enabled = submissionTypes.filter((s) => s.enabled && s.category === "chokes");
       if (!enabled.length) return false;
@@ -3075,7 +3456,7 @@ const ACHIEVEMENTS = [
       workoutEntries.forEach((e) => { (e.submissions || []).forEach((id) => { counts[id] = (counts[id] || 0) + 1; }); });
       return enabled.every((s) => (counts[s.id] || 0) >= 1);
     } },
-  { id: "armbar_wizard", title: "Armbar Wizard", desc: "Fått in alla Armbars på listan!", icon: "zap", xp: 750, badgeImage: SUBMISSION_BADGE_IMG_13, prestige: true,
+  { id: "armbar_wizard", title: "Armbar Wizard", desc: "Fått in alla Armbars på listan!", icon: "zap", xp: 1500, badgeImage: SUBMISSION_BADGE_IMG_13, prestige: true,
     check: () => {
       const enabled = submissionTypes.filter((s) => s.enabled && s.category === "armlocks");
       if (!enabled.length) return false;
@@ -3083,7 +3464,7 @@ const ACHIEVEMENTS = [
       workoutEntries.forEach((e) => { (e.submissions || []).forEach((id) => { counts[id] = (counts[id] || 0) + 1; }); });
       return enabled.every((s) => (counts[s.id] || 0) >= 1);
     } },
-  { id: "leglock_lunatic", title: "Leglock Lunatic", desc: "Fått in alla Ben- och fotlås på listan!", icon: "mountain", xp: 750, badgeImage: SUBMISSION_BADGE_IMG_14, prestige: true,
+  { id: "leglock_lunatic", title: "Leglock Lunatic", desc: "Fått in alla Ben- och fotlås på listan!", icon: "mountain", xp: 1500, badgeImage: SUBMISSION_BADGE_IMG_14, prestige: true,
     check: () => {
       const enabled = submissionTypes.filter((s) => s.enabled && s.category === "leglocks");
       if (!enabled.length) return false;
@@ -3093,7 +3474,7 @@ const ACHIEVEMENTS = [
     } },
   { id: "twister_twister", title: "Twister Twister", desc: "Fått in Twister!", icon: "sparkles", xp: 500, badgeImage: SUBMISSION_BADGE_IMG_10,
     check: () => workoutEntries.some((e) => e.submissions && e.submissions.includes("twister")) },
-  { id: "submission_one_of_each", title: "One to rule them all", desc: "Fått in alla submissions i listan!", icon: "crown", xp: 5000, badgeImage: SUBMISSION_BADGE_IMG_15, prestige: true,
+  { id: "submission_one_of_each", title: "One to rule them all", desc: "Fått in alla submissions i listan!", icon: "crown", xp: 10000, badgeImage: SUBMISSION_BADGE_IMG_15, prestige: true,
     check: () => {
       const enabled = submissionTypes.filter((s) => s.enabled);
       if (!enabled.length) return false;
@@ -3121,41 +3502,41 @@ const ACHIEVEMENTS = [
     check: () => comboSessionCount("leglocks") >= 5, progress: () => ({ current: comboSessionCount("leglocks"), target: 5 }) },
 
   // Hemliga prestationer
-  { id: "julhjalten", title: "Julhjälten", desc: "Träna på julafton.", hint: "En särskild kväll i december...", icon: "gift", xp: 2800, badgeImage: BADGE_IMG_JULHJALTEN, secret: true,
+  { id: "julhjalten", title: "Julhjälten", desc: "Träna på julafton.", hint: "En särskild kväll i december...", icon: "gift", xp: 3000, badgeImage: BADGE_IMG_JULHJALTEN, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "12-24") },
-  { id: "avsluta_starkt", title: "Avsluta starkt", desc: "Träna 31 december.", hint: "Sista chansen innan klockan slår tolv.", icon: "sparkles", xp: 2800, badgeImage: BADGE_IMG_AVSLUTA_STARKT, secret: true,
+  { id: "avsluta_starkt", title: "Avsluta starkt", desc: "Träna 31 december.", hint: "Sista chansen innan klockan slår tolv.", icon: "sparkles", xp: 3000, badgeImage: BADGE_IMG_AVSLUTA_STARKT, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "12-31") },
-  { id: "nyarsloftet", title: "Nyårslöftet", desc: "Träna den 1 januari.", hint: "Ett nytt år, ett nytt löfte.", icon: "sun", xp: 2800, badgeImage: BADGE_IMG_NYARSLOFTET, secret: true,
+  { id: "nyarsloftet", title: "Nyårslöftet", desc: "Träna den 1 januari.", hint: "Ett nytt år, ett nytt löfte.", icon: "sun", xp: 3000, badgeImage: BADGE_IMG_NYARSLOFTET, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "01-01") },
-  { id: "midsommarkrigaren", title: "Midsommarkrigaren", desc: "Träna på midsommarafton.", hint: "En svensk sommarafton i juni.", icon: "flower", xp: 2800, badgeImage: BADGE_IMG_MIDSOMMARKRIGAREN, secret: true,
+  { id: "midsommarkrigaren", title: "Midsommarkrigaren", desc: "Träna på midsommarafton.", hint: "En svensk sommarafton i juni.", icon: "flower", xp: 3000, badgeImage: BADGE_IMG_MIDSOMMARKRIGAREN, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && isMidsummerEve(e.date)) },
-  { id: "lucky777", title: "Lucky 777", desc: "Logga ditt 777:e träningspass.", hint: "Turen är på din sida vid ett visst antal.", icon: "gem", xp: 2800, badgeImage: BADGE_IMG_LUCKY777, secret: true,
-    check: () => workoutEntries.filter(isTraining).length >= 777,
-    progress: () => ({ current: workoutEntries.filter(isTraining).length, target: 777 }) },
-  { id: "beast_mode", title: "Beast Mode", desc: "Genomför ett pass som varar över 120 min.", hint: "Ett pass som verkligen tar tid.", icon: "mountain", xp: 2800, badgeImage: BADGE_IMG_BEAST_MODE, secret: true,
+  { id: "lucky777", title: "Lucky 777", desc: "Samla 777 timmars träning totalt.", hint: "Turen är på din sida vid ett visst antal.", icon: "gem", xp: 15000, badgeImage: BADGE_IMG_LUCKY777, secret: true, unit: "hours",
+    check: () => totalTrainingMinutes() >= 46620,
+    progress: () => ({ current: totalTrainingMinutes(), target: 46620 }) },
+  { id: "beast_mode", title: "Beast Mode", desc: "Genomför ett pass som varar över 120 min.", hint: "Ett pass som verkligen tar tid.", icon: "mountain", xp: 3000, badgeImage: BADGE_IMG_BEAST_MODE, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.minutes > 120) },
-  { id: "blixtsnabb", title: "Blixtsnabb", desc: "Genomför ett träningspass på under 25 minuter.", hint: "Snabbt och effektivt.", icon: "zap", xp: 2800, badgeImage: BADGE_IMG_BLIXTSNABB, secret: true,
+  { id: "blixtsnabb", title: "Blixtsnabb", desc: "Genomför ett träningspass på under 25 minuter.", hint: "Snabbt och effektivt.", icon: "zap", xp: 2000, badgeImage: BADGE_IMG_BLIXTSNABB, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.minutes > 0 && e.minutes < 25) },
-  { id: "paskharen", title: "Påskharen", desc: "Träna på påskafton.", hint: "En vårhelg med ägg och harar.", icon: "rabbit", xp: 2800, badgeImage: BADGE_IMG_PASKHAREN, secret: true,
+  { id: "paskharen", title: "Påskharen", desc: "Träna på påskafton.", hint: "En vårhelg med ägg och harar.", icon: "rabbit", xp: 3000, badgeImage: BADGE_IMG_PASKHAREN, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && isEasterEve(e.date)) },
-  { id: "trippelpasset", title: "Trippelpasset", desc: "Logga tre pass samma dag.", hint: "Tre gånger samma dag.", icon: "layers", xp: 2800, badgeImage: BADGE_IMG_TRIPPELPASSET, secret: true,
+  { id: "trippelpasset", title: "Trippelpasset", desc: "Logga tre pass samma dag.", hint: "Tre gånger samma dag.", icon: "layers", xp: 5000, badgeImage: BADGE_IMG_TRIPPELPASSET, secret: true,
     check: () => {
       const counts = {};
       workoutEntries.filter(isTraining).forEach((e) => { counts[e.date] = (counts[e.date] || 0) + 1; });
       return Object.values(counts).some((c) => c >= 3);
     } },
-  { id: "num_of_beast", title: "Number of the beast", desc: "Loggat 666 pass.", hint: "Ett ökänt tal dyker upp i din logg.", icon: "flame", xp: 2800, badgeImage: BADGE_IMG_NUM_OF_BEAST, secret: true,
+  { id: "num_of_beast", title: "Number of the beast", desc: "Loggat 666 pass.", hint: "Ett ökänt tal dyker upp i din logg.", icon: "flame", xp: 12500, badgeImage: BADGE_IMG_NUM_OF_BEAST, secret: true,
     check: () => workoutEntries.filter(isTraining).length >= 666,
     progress: () => ({ current: workoutEntries.filter(isTraining).length, target: 666 }) },
-  { id: "mattias_birthday", title: "Mattias Födelsedag!", desc: "Appens grundare fyller år.", hint: "Grundarens stora dag, i april.", icon: "star", xp: 2800, badgeImage: BADGE_IMG_MATTIAS_BIRTHDAY, secret: true,
+  { id: "mattias_birthday", title: "Mattias Födelsedag!", desc: "Appens grundare fyller år.", hint: "Grundarens stora dag, i april.", icon: "star", xp: 3000, badgeImage: BADGE_IMG_MATTIAS_BIRTHDAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "04-26") },
-  { id: "lo_birthday", title: "Los Födelsedag!", desc: "Mattias barn Lo fyller år.", hint: "Någon liten i familjen firar, i januari.", icon: "heart", xp: 2800, badgeImage: BADGE_IMG_LO_BIRTHDAY, secret: true,
+  { id: "lo_birthday", title: "Los Födelsedag!", desc: "Mattias barn Lo fyller år.", hint: "Någon liten i familjen firar, i januari.", icon: "heart", xp: 3000, badgeImage: BADGE_IMG_LO_BIRTHDAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "01-07") },
-  { id: "luna_birthday", title: "Lunas Födelsedag!", desc: "Mattias barn Luna fyller år.", hint: "Ännu en i familjen firar, i mars.", icon: "medal", xp: 2800, badgeImage: BADGE_IMG_LUNA_BIRTHDAY, secret: true,
+  { id: "luna_birthday", title: "Lunas Födelsedag!", desc: "Mattias barn Luna fyller år.", hint: "Ännu en i familjen firar, i mars.", icon: "medal", xp: 3000, badgeImage: BADGE_IMG_LUNA_BIRTHDAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "03-05") },
-  { id: "datumjagaren", title: "Datumjägaren", desc: "Träna den 14:e i månaden tre gånger.", hint: "Vissa datum återkommer om man håller ögonen öppna.", icon: "target", xp: 2800, badgeImage: BADGE_IMG_DATUMJAGAREN, secret: true,
+  { id: "datumjagaren", title: "Datumjägaren", desc: "Träna den 14:e i månaden tre gånger.", hint: "Vissa datum återkommer om man håller ögonen öppna.", icon: "target", xp: 2500, badgeImage: BADGE_IMG_DATUMJAGAREN, secret: true,
     check: () => workoutEntries.filter((e) => isTraining(e) && e.date.slice(8, 10) === "14").length >= 3 },
-  { id: "pionjaren", title: "Pionjären", desc: "Skapat ett eget träningspass och tränat det minst 10 gånger.", hint: "Bana din egen väg.", icon: "compass", xp: 2800, badgeImage: BADGE_IMG_PIONJAREN, secret: true,
+  { id: "pionjaren", title: "Pionjären", desc: "Skapat ett eget träningspass och tränat det minst 10 gånger.", hint: "Bana din egen väg.", icon: "compass", xp: 5000, badgeImage: BADGE_IMG_PIONJAREN, secret: true,
     check: () => {
       const defaultKeys = DEFAULT_TRAINING_TYPES.map((t) => t.key);
       const customKeys = trainingTypes.filter((t) => !defaultKeys.includes(t.key)).map((t) => t.key);
@@ -3164,7 +3545,7 @@ const ACHIEVEMENTS = [
       workoutEntries.forEach((e) => { if (customKeys.includes(e.type)) counts[e.type] = (counts[e.type] || 0) + 1; });
       return Object.values(counts).some((c) => c >= 10);
     } },
-  { id: "black_belt_day", title: "Black belt!", desc: "Grundaren av appen fick sitt svarta bälte 13 juli 2019.", hint: "Black belt day, i juli.", icon: "crown", xp: 2000, badgeImage: BADGE_IMG_BLACK_BELT_DAY, secret: true,
+  { id: "black_belt_day", title: "Black belt!", desc: "Grundaren av appen fick sitt svarta bälte 13 juli 2019.", hint: "Black belt day, i juli.", icon: "crown", xp: 3000, badgeImage: BADGE_IMG_BLACK_BELT_DAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "07-13") },
 ];
 
@@ -3212,14 +3593,31 @@ function checkAchievements() {
     showInfoToast(`🏅 ${autoPrestiged.length} prestationer prestigeade automatiskt — +${totalGained} XP`);
   }
 
-  if (anyNew) {
-    const levelAfter = computeLevelInfo(totalXp()).level;
-    if (levelAfter > levelBefore) {
-      celebrationQueue.push({ type: "levelup", level: levelAfter });
-    }
-    if (celebrationQueue.length && !document.getElementById("celebrationOverlay")) {
-      showNextCelebration();
-    }
+  // OBS: den här kollen låg tidigare inuti "if (anyNew)" ovan, vilket gjorde
+  // att level-up-firandet (popup + ljud) bara visades om en prestation ÄVEN
+  // låstes upp i exakt samma anrop. XP från loggning/veckoutmaningar/bingo
+  // kan leda till en level-up helt utan någon samtidig prestation, och då
+  // visades ingen firande-popup alls - en riktig bugg, inte bara ett
+  // debug-relaterat beteende. Nu körs den oberoende av anyNew.
+  const levelAfter = computeLevelInfo(totalXp()).level;
+  if (levelAfter > levelBefore) {
+    celebrationQueue.push({ type: "levelup", level: levelAfter });
+  }
+  if (celebrationQueue.length && !document.getElementById("celebrationOverlay")) {
+    showNextCelebration();
+  }
+}
+// Kör en funktion som kan ändra XP/level, och visar automatiskt
+// level-up-firandet (popup + ljud) om leveln faktiskt gick upp som resultat -
+// används av debug-verktygen så man kan testa/höra firandet även när man
+// hoppar level direkt utan att en prestation låses upp samtidigt.
+function withLevelUpCelebration(fn) {
+  const levelBefore = computeLevelInfo(totalXp()).level;
+  fn();
+  const levelAfter = computeLevelInfo(totalXp()).level;
+  if (levelAfter > levelBefore) {
+    celebrationQueue.push({ type: "levelup", level: levelAfter });
+    if (!document.getElementById("celebrationOverlay")) showNextCelebration();
   }
 }
 
@@ -3305,6 +3703,7 @@ function showNextCelebration() {
     `;
   }
   document.body.appendChild(overlay);
+  playCelebrationChime(item.type);
   const monthRecapBtn = document.getElementById("celebrationMonthRecapBtn");
   if (monthRecapBtn) {
     monthRecapBtn.addEventListener("click", () => {
@@ -3314,8 +3713,26 @@ function showNextCelebration() {
     });
   }
   document.getElementById("celebrationNextBtn").addEventListener("click", () => {
+    const wasLevelUp = item.type === "levelup";
     celebrationQueue.shift();
     overlay.remove();
+    // Om Inställningar redan var öppet när man levlade upp visade
+    // ikon-väljaren fortfarande gammal låst/upplåst-status. Rendera om den
+    // direkt så man slipper stänga och öppna menyn igen.
+    if (wasLevelUp && document.getElementById("settingsSearchInput")) {
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      const scrollTop = sheet ? sheet.scrollTop : 0;
+      openBackupModal();
+      const newSheet = modalRoot.querySelector(".modal-sheet");
+      if (newSheet) newSheet.scrollTop = scrollTop;
+    } else if (wasLevelUp && document.getElementById("profileModalOverlay")) {
+      // Samma sak för profilram-väljaren i Profil-menyn.
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      const scrollTop = sheet ? sheet.scrollTop : 0;
+      openProfileModal();
+      const newSheet = modalRoot.querySelector(".modal-sheet");
+      if (newSheet) newSheet.scrollTop = scrollTop;
+    }
     if (celebrationQueue.length) {
       showNextCelebration();
     } else if (activeTab === "stats") {
@@ -3569,6 +3986,7 @@ function wireMonthlyBarChartCardEvents() {
 }
 
 let levelHeroViewIndex = null;
+let levelHeroLastCurrentIndex = null;
 
 function levelHeroCardHTML() {
   const info = computeLevelInfo(totalXp());
@@ -3578,7 +3996,14 @@ function levelHeroCardHTML() {
   const maxViewIndex = Math.min(tiers.length - 1, currentIndex + 1);
   if (levelHeroViewIndex === null || levelHeroViewIndex > maxViewIndex || levelHeroViewIndex < 0) {
     levelHeroViewIndex = currentIndex;
+  } else if (levelHeroLastCurrentIndex !== null && levelHeroViewIndex === levelHeroLastCurrentIndex && currentIndex !== levelHeroLastCurrentIndex) {
+    // Man tittade på "nuvarande nivå" och den har hoppat framåt (level-up,
+    // även flera bälten på en gång - t.ex. via debug-verktyget) - följ med
+    // automatiskt istället för att bli kvar på den gamla nivån tills man
+    // klickar sig fram manuellt med pil-knapparna.
+    levelHeroViewIndex = currentIndex;
   }
+  levelHeroLastCurrentIndex = currentIndex;
   const viewIndex = levelHeroViewIndex;
   const belt = tiers[viewIndex];
   const isViewingCurrent = viewIndex === currentIndex;
@@ -3602,7 +4027,10 @@ function levelHeroCardHTML() {
   const subLabel = isLocked ? "Inte upplåst än" : isPast ? "Tidigare uppnådd nivå" : `${info.xpIntoLevel} / ${info.xpForNext} XP till level ${info.level + 1}`;
   return `
     <div class="card" style="text-align:center">
-      <div style="font-size:13px;font-weight:600;color:var(--muted)">${profile.name ? escapeHtml(profile.name) : "Din progression"}</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+        ${profileAvatarHTML(40, 3) || ""}
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">${profile.name ? escapeHtml(profile.name) : "Din progression"}</div>
+      </div>
       <div style="display:flex;align-items:center;justify-content:center;margin:6px 0 8px">
         ${isViewingCurrent
           ? `<span style="display:inline-flex;align-items:center;font-size:22px;font-weight:800;font-family:inherit;${textStyle}">Level ${info.level}</span>`
@@ -3617,10 +4045,31 @@ function levelHeroCardHTML() {
           <span class="icon-20" style="color:var(--muted);display:flex">${ICONS.chevronLeft}</span>
         </button>
         <div style="position:relative;display:inline-flex">
-          ${belt.image
-            ? `<img src="${belt.image}" alt="${belt.name}" style="height:88px;width:auto;object-fit:contain;${isLocked ? "filter:grayscale(1);opacity:0.45;" : ""}" />`
-            : `<span style="width:56px;height:56px;display:flex;color:${nameColor};${isLocked ? "opacity:0.45;" : ""}">${ICONS.belt}</span>`}
-          ${stripeCount > 0 ? `<div style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;display:flex;gap:3px">
+          ${(() => {
+            // Badgen får samma rörliga sken som profilbilden/flikarna - men bara
+            // om det valda skenet faktiskt är en rörlig effekt (en statisk färg
+            // ser inte bra ut runt badgen), upplåst i samma takt som övriga
+            // sken (från level 5), på din faktiska aktuella nivå, och bara om
+            // inställningen inte är avstängd. Aktivt oavsett vilken badge man
+            // bläddrat till (nuvarande ELLER tidigare uppnådd) - bara inte på
+            // ännu olåsta/framtida badges, som redan är nedtonade.
+            const currentFrameKey = resolveProfileFrame();
+            const beltRingActive = !isLocked && beltBadgeFrameEnabled
+              && FRAME_EFFECT_KEYS.includes(currentFrameKey)
+              && (info.level >= (PROFILE_FRAME_UNLOCK_LEVEL[currentFrameKey] || 1) || debugForceUnlockCosmetics);
+            const beltFrame = beltRingActive ? profileFrameWrapStyle(currentFrameKey, 4, "octagon") : null;
+            if (!belt.image) {
+              return `<span style="width:56px;height:56px;display:flex;color:${nameColor};${isLocked ? "opacity:0.45;" : ""}">${ICONS.belt}</span>`;
+            }
+            const img = `<img src="${belt.image}" alt="${belt.name}" style="height:88px;width:auto;object-fit:contain;${isLocked ? "filter:grayscale(1);opacity:0.45;" : ""}" />`;
+            // Samma padding reserveras alltid (även utan aktiv ring) så att
+            // badgens storlek inte hoppar till när man växlar mellan en
+            // statisk färg och en rörlig effekt.
+            return beltFrame
+              ? `<div class="${beltFrame.className}" style="${beltFrame.style}">${img}</div>`
+              : `<div style="padding:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${img}</div>`;
+          })()}
+          ${stripeCount > 0 ? `<div class="belt-stripe-scroll" style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:3px;width:21px;max-height:88px;overflow-y:auto">
             ${Array.from({ length: stripeCount }, () => `<span style="width:5px;height:26px;background:#FFFFFF;border:1.5px solid #000000;border-radius:1px;display:inline-block;flex-shrink:0"></span>`).join("")}
           </div>` : ""}
         </div>
@@ -4449,6 +4898,14 @@ function saveCollapsedCategories() {
 }
 let collapsedCategories = loadCollapsedCategories();
 
+// Formaterar en progress-rad som text. Vissa prestationer (t.ex. timbaserade)
+// räknar internt i minuter (för exakthet i check()/stapelns fyllnadsprocent),
+// men ska visas i hela avrundade timmar för att vara läsbara - därför tar
+// den emot achievement-objektet (för a.unit) separat från själva p-delen.
+function formatProgressText(unit, p) {
+  if (unit === "hours") return `${Math.floor(p.current / 60)}/${Math.round(p.target / 60)}`;
+  return `${p.current}/${p.target}`;
+}
 function progressRatio(p) {
   if (p.parts) {
     return Math.min(...p.parts.map((part) => (part.target > 0 ? Math.min(1, part.current / part.target) : 0)));
@@ -4473,20 +4930,33 @@ function nearCompletionList(n) {
     .slice(0, n);
 }
 function nearCompletionBadgeHTML(a, p) {
-  const iconHTML = a.emoji
-    ? `<span style="font-size:15px;line-height:1">${a.emoji}</span>`
-    : `<span style="width:16px;height:16px;display:flex">${ICONS[a.icon]}</span>`;
+  // Använd samma ikon/badge-bild som prestationslistan istället för de gamla
+  // generiska ikonerna - "nära att slutföras" ska kännas igen som exakt
+  // samma prestation, bara nedtonad (dimmad/gråskala) eftersom den ju inte
+  // är upplåst än. Samma prioritetsordning som achievementBadgeHTML: egen
+  // badge-bild > kategorins tier-bild > emoji/generisk ikon i en ring.
+  const family = familyIconFor(a.id);
+  const tier = achievementTier(a.xp);
+  let iconHTML;
+  if (a.badgeImage) {
+    iconHTML = `<img src="${a.badgeImage}" alt="${a.title}" style="width:32px;height:32px;object-fit:contain;display:block;opacity:0.35;filter:grayscale(1)" />`;
+  } else if (family && family.tierImages) {
+    iconHTML = `<img src="${family.tierImages[tier - 1]}" alt="${a.title}" style="width:32px;height:32px;object-fit:contain;display:block;opacity:0.35;filter:grayscale(1)" />`;
+  } else {
+    const emojiOrIcon = a.emoji
+      ? `<span style="font-size:15px;line-height:1">${a.emoji}</span>`
+      : `<span style="width:16px;height:16px;display:flex">${ICONS[a.icon]}</span>`;
+    iconHTML = `<div class="icon-20" style="color:${tabColors.stats};width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1.5px solid ${tabColors.stats};border-radius:50%">${emojiOrIcon}</div>`;
+  }
   const bp = bottleneckPart(p);
   return `
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;width:76px;flex-shrink:0">
-      <div class="icon-20" style="color:${tabColors.stats};width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1.5px solid ${tabColors.stats};border-radius:50%">
-        ${iconHTML}
-      </div>
+      <div style="width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center">${iconHTML}</div>
       <div style="font-size:10.5px;font-weight:700;color:var(--text);line-height:1.15">${a.title}</div>
       <div style="width:100%;height:5px;background:var(--border);border-radius:999px;overflow:hidden">
         <div style="height:100%;width:${Math.round((bp.current / bp.target) * 100)}%;background:${tabColors.stats};border-radius:999px"></div>
       </div>
-      <div style="font-size:9px;font-weight:700;color:${tabColors.stats}">${bp.label ? `${bp.label} ${bp.current}/${bp.target}` : `${bp.current}/${bp.target}`}</div>
+      <div style="font-size:9px;font-weight:700;color:${tabColors.stats}">${bp.label ? `${bp.label} ${formatProgressText(a.unit, bp)}` : formatProgressText(a.unit, bp)}</div>
     </div>
   `;
 }
@@ -4512,10 +4982,11 @@ function familyIconFor(id) {
 }
 const TIER_MEDALS = {
   1: { ring: "#B08D57", bg: "#B08D5722" },
-  2: { ring: "#AEB4BD", bg: "#AEB4BD22" },
+  2: { ring: "#C7CDD6", bg: "#C7CDD622" },
   3: { ring: "#E8B923", bg: "#E8B92322" },
   4: { ring: "#7FE0EF", bg: "#7FE0EF22" },
 };
+const TIER_NAMES = { 1: "Brons", 2: "Silver", 3: "Guld", 4: "Diamant" };
 function achievementTier(xp) {
   if (xp >= 2800) return 4;
   if (xp >= 800) return 3;
@@ -4563,7 +5034,7 @@ function achievementBadgeHTML(a) {
       </div>
       <div style="font-size:10.5px;font-weight:700;color:${textColor};line-height:1.15">${hidden ? "???" : a.title}</div>
       <div style="font-size:9px;color:var(--muted2);line-height:1.2">${hidden ? (a.hint || "Hemlig prestation") : a.desc}</div>
-      <div style="font-size:9px;font-weight:700;color:${done ? tabColors.stats : "var(--muted)"}">${hidden ? "???" : `${a.xp} XP`}</div>
+      <div style="font-size:9px;font-weight:700;color:${done ? tabColors.stats : "var(--muted)"}">${hidden ? "???" : `${a.xp} XP · <span style="color:${medal.ring};font-weight:800;letter-spacing:0.2px">${TIER_NAMES[tier]}</span>`}</div>
     </div>
   `;
 }
@@ -4650,13 +5121,13 @@ function openAchievementProgressModal(id) {
           </div>
         ` : progress ? `
           <div class="card" style="background:var(--bg);text-align:center">
-            <div style="font-size:22px;font-weight:800;color:${tabColors.stats}">${progress.current}/${progress.target}</div>
+            <div style="font-size:22px;font-weight:800;color:${tabColors.stats}">${formatProgressText(a.unit, progress)}</div>
             <div style="height:8px;background:var(--border);border-radius:999px;overflow:hidden;margin-top:8px">
               <div style="height:100%;width:${Math.min(100, Math.round((progress.current / progress.target) * 100))}%;background:${tabColors.stats};border-radius:999px"></div>
             </div>
           </div>
         ` : ""}
-        <p style="font-size:12px;color:var(--muted)">Inte upplåst än — ${a.xp} XP när du klarar den.</p>
+        <p style="font-size:12px;color:var(--muted)">Inte upplåst än — ${a.xp} XP · <span style="color:${medal.ring};font-weight:800;letter-spacing:0.2px">${TIER_NAMES[tier]}</span> när du klarar den.</p>
         <div class="modal-close" id="achievementProgressCloseBtn">Stäng</div>
       </div>
     </div>
@@ -4700,7 +5171,7 @@ function openForgetAchievementModal(id, confirming) {
           ${prestigeCount > 0 ? `<span style="position:absolute;top:-6px;right:calc(50% - 50px);background:#1A1A1A;color:#FFFFFF;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;border:1.5px solid #444">×${prestigeCount + 1}</span>` : ""}
         </div>
         <h2 style="text-align:center">🔓 ${escapeHtml(a.title)}${prestigeCount > 0 ? ` ×${prestigeCount + 1}` : ""}</h2>
-        <p>Upplåst ${dateText} — ${a.xp} XP.</p>
+        <p>Upplåst ${dateText} — ${a.xp} XP · <span style="color:${medal.ring};font-weight:800;letter-spacing:0.2px">${TIER_NAMES[tier]}</span>.</p>
         ${confirming ? `
           <p style="font-weight:700">Är du säker på att du vill glömma prestationen?</p>
           <p style="font-size:12px;color:var(--muted)">${prestigeCount > 0 ? `Det går inte att ångra — du går tillbaka en prestige-nivå (till ×${prestigeCount}) och tappar ${a.xp} XP.` : "Det går inte att ångra — prestationen och dess " + a.xp + " XP tas bort permanent."}</p>
@@ -5343,7 +5814,7 @@ function renderTraning() {
       `;
     })() : ""}
 
-    ${gymMenuEnabled && workoutFormState.type === "Gym" && gymSplits.some((g) => g.enabled) ? `
+    ${workoutFormState.type === "Gym" && gymSplits.some((g) => g.enabled) ? `
     <div class="card">
       <div class="card-label">Vilket pass?</div>
       ${(() => {
@@ -5634,7 +6105,7 @@ function renderTraning() {
         trimmedNote = trimmedNote ? `${trimmedNote} — ${ratingNote}` : ratingNote;
       }
     }
-    const gymSplitTracked = gymMenuEnabled && workoutFormState.type === "Gym" && workoutFormState.gymSplit;
+    const gymSplitTracked = workoutFormState.type === "Gym" && workoutFormState.gymSplit;
     if (gymSplitTracked) {
       const split = gymSplits.find((g) => g.id === workoutFormState.gymSplit);
       if (split) {
@@ -7285,10 +7756,13 @@ function buildSettingsPayload() {
     submissionsMenuEnabled,
     submissionTypes,
     themeMode,
+    bgAccentHex,
     levelTheme,
     navIconStyle,
     navIconSize,
     navBadgeColor,
+    trainingTabIcon,
+    beltBadgeFrameEnabled,
     bodyMeasurementsEnabled,
     bodyMeasurementTypes,
     pbExercises,
@@ -7311,6 +7785,7 @@ function buildSettingsPayload() {
     showBodyMeasurementHistory,
     showFoodSearch,
     hapticsEnabled,
+    soundEffectsEnabled,
     calorieGoal,
     showCalorieStats,
     showSubmissionStats,
@@ -7766,6 +8241,12 @@ function importBackupFile(file) {
         applyTheme();
         restoredSomething = true;
       }
+      if (data.bgAccentHex === null || typeof data.bgAccentHex === "string") {
+        bgAccentHex = data.bgAccentHex;
+        saveBgAccentHex();
+        applyBgTint();
+        restoredSomething = true;
+      }
       if (data.levelTheme === "belt" || data.levelTheme === "fitness" || data.levelTheme === "gym" || data.levelTheme === "run") {
         levelTheme = data.levelTheme;
         saveLevelTheme();
@@ -7784,6 +8265,19 @@ function importBackupFile(file) {
       if (typeof data.navBadgeColor === "string") {
         navBadgeColor = data.navBadgeColor;
         saveNavBadgeColor();
+        restoredSomething = true;
+      }
+      {
+        const migratedTTI = data.trainingTabIcon === "run" ? "runBlue" : data.trainingTabIcon;
+        if (migratedTTI === null || Object.keys(TRAINING_TAB_ICON_CHOICES).includes(migratedTTI)) {
+          trainingTabIcon = migratedTTI;
+          saveTrainingTabIcon();
+          restoredSomething = true;
+        }
+      }
+      if (typeof data.beltBadgeFrameEnabled === "boolean") {
+        beltBadgeFrameEnabled = data.beltBadgeFrameEnabled;
+        saveBeltBadgeFrameEnabled();
         restoredSomething = true;
       }
       if (typeof data.bodyMeasurementsEnabled === "boolean") {
@@ -7891,6 +8385,11 @@ function importBackupFile(file) {
       if (typeof data.showFoodSearch === "boolean") {
         showFoodSearch = data.showFoodSearch;
         saveShowFoodSearch();
+        restoredSomething = true;
+      }
+      if (typeof data.soundEffectsEnabled === "boolean") {
+        soundEffectsEnabled = data.soundEffectsEnabled;
+        saveSoundEffects();
         restoredSomething = true;
       }
       if (typeof data.hapticsEnabled === "boolean") {
@@ -8113,10 +8612,13 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.submissionsMenuEnabled === "boolean") { submissionsMenuEnabled = remote.submissionsMenuEnabled; saveSubmissionsMenuEnabled(); }
     if (Array.isArray(remote.submissionTypes) && remote.submissionTypes.length) { submissionTypes = remote.submissionTypes; saveSubmissionTypes(); }
     if (remote.themeMode === "dark" || remote.themeMode === "light") { themeMode = remote.themeMode; saveThemeMode(); applyTheme(); }
+    if (remote.bgAccentHex === null || typeof remote.bgAccentHex === "string") { bgAccentHex = remote.bgAccentHex; saveBgAccentHex(); applyBgTint(); }
     if (remote.levelTheme === "belt" || remote.levelTheme === "fitness" || remote.levelTheme === "gym" || remote.levelTheme === "run") { levelTheme = remote.levelTheme; saveLevelTheme(); }
     if (remote.navIconStyle === "icons" || remote.navIconStyle === "images" || remote.navIconStyle === "emblem") { navIconStyle = remote.navIconStyle; saveNavIconStyle(); }
     if (remote.navIconSize === "tiny" || remote.navIconSize === "small" || remote.navIconSize === "large") { navIconSize = remote.navIconSize; saveNavIconSize(); }
     if (typeof remote.navBadgeColor === "string") { navBadgeColor = remote.navBadgeColor; saveNavBadgeColor(); }
+    { const migratedRemoteTTI = remote.trainingTabIcon === "run" ? "runBlue" : remote.trainingTabIcon; if (migratedRemoteTTI === null || Object.keys(TRAINING_TAB_ICON_CHOICES).includes(migratedRemoteTTI)) { trainingTabIcon = migratedRemoteTTI; saveTrainingTabIcon(); } }
+    if (typeof remote.beltBadgeFrameEnabled === "boolean") { beltBadgeFrameEnabled = remote.beltBadgeFrameEnabled; saveBeltBadgeFrameEnabled(); }
     if (typeof remote.bodyMeasurementsEnabled === "boolean") { bodyMeasurementsEnabled = remote.bodyMeasurementsEnabled; saveBodyMeasurementsEnabled(); }
     if (Array.isArray(remote.bodyMeasurementTypes) && remote.bodyMeasurementTypes.length) { bodyMeasurementTypes = remote.bodyMeasurementTypes; saveBodyMeasurementTypes(); }
     if (Array.isArray(remote.pbExercises) && remote.pbExercises.length) { pbExercises = remote.pbExercises; savePbExercises(); }
@@ -8146,6 +8648,7 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.showBodyMeasurementHistory === "boolean") { showBodyMeasurementHistory = remote.showBodyMeasurementHistory; saveShowBodyMeasurementHistory(); }
     if (typeof remote.showFoodSearch === "boolean") { showFoodSearch = remote.showFoodSearch; saveShowFoodSearch(); }
     if (typeof remote.hapticsEnabled === "boolean") { hapticsEnabled = remote.hapticsEnabled; saveHaptics(); }
+    if (typeof remote.soundEffectsEnabled === "boolean") { soundEffectsEnabled = remote.soundEffectsEnabled; saveSoundEffects(); }
     if (remote.calorieGoal === "lose" || remote.calorieGoal === "maintain" || remote.calorieGoal === "gain") { calorieGoal = remote.calorieGoal; saveCalorieGoal(); }
     if (typeof remote.showCalorieStats === "boolean") { showCalorieStats = remote.showCalorieStats; saveShowCalorieStats(); }
     if (typeof remote.showSubmissionStats === "boolean") { showSubmissionStats = remote.showSubmissionStats; saveShowSubmissionStats(); }
@@ -8304,7 +8807,7 @@ const CLOUD_SYNC_TRIGGER_FNS = [
   "saveShowCalorieStats", "saveShowSubmissionStats", "saveShowDistributionStats", "saveShowCalorieHistoryList",
   "saveShowWeightHistory", "saveShowWorkoutHistory", "saveShowBodyMeasurementHistory", "saveShowCompareCard",
   "saveShowWeeklyChallenge", "saveShowMonthlyBarChart", "saveNavIconStyle", "saveNavIconSize", "saveShowNavLabels",
-  "saveNavBadgeColor", "saveShowWeightStats", "saveQuickPresets", "saveAdvancedMenuEnabled", "saveAdvancedQuestions",
+  "saveNavBadgeColor", "saveTrainingTabIcon", "saveShowWeightStats", "saveQuickPresets", "saveAdvancedMenuEnabled", "saveAdvancedQuestions",
   "saveKampsportAdvancedSectionOpen", "saveMacroSettings", "saveSubmissionsMenuEnabled", "saveSubmissionTypes",
   "saveGymMenuEnabled", "saveGymSplits", "saveKonditionMenuEnabled", "savePbExercises", "persistPbLog",
   "saveShowPbCard", "saveShowPbHistory", "saveKonditionPbDistances", "persistKonditionPbLog", "saveBodyMeasurementsEnabled",
@@ -8343,6 +8846,7 @@ function applyAccentVar() {
 const SETTINGS_SEARCH_INDEX = [
   { label: "Redigera profil", keywords: ["profil", "namn", "bälte namn"], expandIds: [], targetSelector: "#openProfileBtn" },
   { label: "Mörkt / Ljust läge", keywords: ["mörkt", "ljust", "dark", "light", "utseende"], expandIds: [], targetSelector: '[data-theme-btn="dark"]' },
+  { label: "Bakgrundston", keywords: ["bakgrund", "bakgrundsfärg", "färg", "ton", "utseende"], expandIds: [], targetSelector: "#bgAccentColorInput" },
   { label: "Tema (Kampsport/Fitness/Styrkelyft/Löpare)", keywords: ["tema", "bälte", "fitness", "styrkelyft", "löpare", "kampsport level"], expandIds: [], targetSelector: '[data-level-theme-btn="belt"]' },
   { label: "Haptisk feedback", keywords: ["haptisk", "vibration"], expandIds: [], targetSelector: "#hapticsToggle" },
   { label: "Avancerad meny Vikt / Kroppsmått", keywords: ["kroppsmått", "midja", "bröstmått", "höft", "lår mått"], expandIds: [], targetSelector: "#viktAdvancedSectionToggle" },
@@ -8631,6 +9135,11 @@ function openBackupModal() {
           <button class="theme-btn" data-theme-btn="dark" style="${themeMode === "dark" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🌙 Mörkt</button>
           <button class="theme-btn" data-theme-btn="light" style="${themeMode === "light" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">☀️ Ljust</button>
         </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <span style="font-size:14px;font-weight:600;flex:1">Bakgrundston</span>
+          <input type="color" id="bgAccentColorInput" value="${bgAccentHex || (themeMode === "light" ? "#F4F5F7" : "#0F1115")}" style="width:36px;height:36px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
+          ${bgAccentHex ? `<button class="modal-btn secondary" id="bgAccentResetBtn" style="width:auto;padding:8px 12px">Återställ</button>` : ""}
+        </div>
         <h2 style="margin-top:6px">Tema</h2>
         <div class="theme-row">
           <button class="theme-btn" data-level-theme-btn="belt" style="${levelTheme === "belt" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🥋 Kampsport</button>
@@ -8649,6 +9158,13 @@ function openBackupModal() {
           <span style="font-size:14px;font-weight:600">Haptisk feedback (vibration)</span>
           <label class="toggle-switch">
             <input type="checkbox" id="hapticsToggle" ${hapticsEnabled ? "checked" : ""} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span style="font-size:14px;font-weight:600">Ljud vid grattis-popups</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="soundEffectsToggle" ${soundEffectsEnabled ? "checked" : ""} />
             <span class="toggle-slider"></span>
           </label>
         </div>
@@ -8800,16 +9316,32 @@ function openBackupModal() {
               <span class="toggle-slider"></span>
             </label>
           </div>
+
+          <div style="font-size:13px;color:var(--muted);margin-bottom:4px">Träningsflikens ikon</div>
+          <p style="margin-top:-6px;font-size:12px;color:var(--muted)">Nya ikoner låses upp när du levlar upp.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${(() => {
+              const currentLevel = computeLevelInfo(totalXp()).level;
+              return Object.keys(TRAINING_TAB_ICON_CHOICES).map((key) => {
+                const unlockLevel = TRAINING_TAB_ICON_UNLOCK_LEVEL[key] || 1;
+                const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+                return `
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:52px">
+                    <button ${isUnlocked ? `data-training-tab-icon="${key}"` : ""} aria-label="${key}" style="width:52px;height:52px;padding:4px;border-radius:12px;border:1.5px solid ${trainingTabIcon === key ? tabColors.traning : "var(--border2)"};background:${trainingTabIcon === key ? tabColors.traning + "26" : "transparent"};cursor:${isUnlocked ? "pointer" : "default"}">
+                      <img src="${TRAINING_TAB_ICON_CHOICES[key]}" alt="" style="width:100%;height:100%;object-fit:contain;display:block;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}" />
+                    </button>
+                    ${!isUnlocked ? `<span style="font-size:10px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
+                  </div>
+                `;
+              }).join("");
+            })()}
+          </div>
+
           <div id="tabOrderList" style="display:flex;flex-direction:column;gap:6px"></div>
 
           <div style="font-size:13px;color:var(--muted);margin-bottom:0;margin-top:10px;font-weight:600">Flikfärg (nav-bar &amp; glow)</div>
-          <p style="margin-top:-4px;font-size:12px;color:var(--muted)">Färgen på den aktiva fliken längst ner, inklusive glow-effekten.</p>
-          ${TABS.map((t) => `
-            <div style="display:flex;align-items:center;gap:10px">
-              <input type="color" data-nav-glow-color="${t.key}" value="${navGlowColors[t.key]}" style="width:32px;height:32px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
-              <span style="font-size:14px;font-weight:600">${t.label}</span>
-            </div>
-          `).join("")}
+          <p style="margin-top:-4px;font-size:12px;color:var(--muted)">Färgen på den aktiva fliken längst ner, inklusive glow-effekten. Fler effekter låses upp när du levlar upp.</p>
+          <div id="navGlowSection"></div>
           <button class="modal-btn secondary" id="resetNavGlowColorsBtn">Återställ till standardfärg</button>
 
           <div style="font-size:13px;color:var(--muted);margin-bottom:0;margin-top:10px;font-weight:600">Färger</div>
@@ -8913,6 +9445,16 @@ function openBackupModal() {
           <button class="modal-btn secondary" id="debugLockAllBtn">Lås alla prestationer igen</button>
           <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px">Lås upp/av valfri prestation</div>
           <div id="debugAchievementsList" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px">Kosmetik (flikikoner &amp; profilram/flik-sken)</div>
+          <p style="margin-top:-4px;font-size:12px;color:var(--muted)">Visar alla ikoner och sken som upplåsta för förhandsgranskning, utan att ändra din riktiga level.</p>
+          <div class="toggle-row">
+            <span style="font-size:14px;font-weight:600">Lås upp alla för test</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="debugForceUnlockCosmeticsToggle" ${debugForceUnlockCosmetics ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
           ` : `
           <div style="font-size:12px;color:var(--muted)">Debug-läget är låst. Ange PIN-kod för att låsa upp.</div>
           <div style="display:flex;gap:8px;align-items:center">
@@ -8940,6 +9482,32 @@ function openBackupModal() {
       if (newSheet) newSheet.scrollTop = scrollTop;
     });
   });
+  document.getElementById("bgAccentColorInput").addEventListener("input", (e) => {
+    bgAccentHex = e.target.value;
+    saveBgAccentHex();
+    applyBgTint();
+    const resetBtn = document.getElementById("bgAccentResetBtn");
+    if (!resetBtn) {
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      const scrollTop = sheet ? sheet.scrollTop : 0;
+      openBackupModal();
+      const newSheet = modalRoot.querySelector(".modal-sheet");
+      if (newSheet) newSheet.scrollTop = scrollTop;
+    }
+  });
+  const bgAccentResetBtn = document.getElementById("bgAccentResetBtn");
+  if (bgAccentResetBtn) {
+    bgAccentResetBtn.addEventListener("click", () => {
+      bgAccentHex = null;
+      saveBgAccentHex();
+      applyBgTint();
+      const sheet = modalRoot.querySelector(".modal-sheet");
+      const scrollTop = sheet ? sheet.scrollTop : 0;
+      openBackupModal();
+      const newSheet = modalRoot.querySelector(".modal-sheet");
+      if (newSheet) newSheet.scrollTop = scrollTop;
+    });
+  }
   modalRoot.querySelectorAll("[data-level-theme-btn]").forEach((btn) => {
     btn.addEventListener("click", () => {
       levelTheme = btn.dataset.levelThemeBtn;
@@ -9057,6 +9625,7 @@ function openBackupModal() {
   });
   renderBodyMeasurementTypesList();
   renderTabOrderList();
+  renderNavGlowSection();
   if (debugSectionOpen && debugUnlockedThisSession) renderDebugAchievementsList();
   document.getElementById("tabOrderMenuToggle").addEventListener("change", (e) => {
     tabOrderSectionOpen = e.target.checked;
@@ -9083,6 +9652,19 @@ function openBackupModal() {
       renderNav();
     });
   }
+  modalRoot.querySelectorAll("[data-training-tab-icon]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      trainingTabIcon = trainingTabIcon === btn.dataset.trainingTabIcon ? null : btn.dataset.trainingTabIcon;
+      saveTrainingTabIcon();
+      renderNav();
+      renderTabOrderList();
+      modalRoot.querySelectorAll("[data-training-tab-icon]").forEach((otherBtn) => {
+        const isSelected = trainingTabIcon === otherBtn.dataset.trainingTabIcon;
+        otherBtn.style.borderColor = isSelected ? tabColors.traning : "var(--border2)";
+        otherBtn.style.background = isSelected ? tabColors.traning + "26" : "transparent";
+      });
+    });
+  });
   document.getElementById("presetsMenuToggle").addEventListener("change", (e) => {
     presetsSectionOpen = e.target.checked;
     document.getElementById("presetsBody").style.display = presetsSectionOpen ? "flex" : "none";
@@ -9220,18 +9802,22 @@ function openBackupModal() {
   if (debugUnlockedThisSession) {
     document.querySelectorAll("[data-debug-belt]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const target = xpNeededForLevel(parseInt(btn.dataset.debugBelt, 10));
-        debugXpOverride = target - (achievementXp() + logXp);
-        saveDebugXpOverride();
+        withLevelUpCelebration(() => {
+          const target = xpNeededForLevel(parseInt(btn.dataset.debugBelt, 10));
+          debugXpOverride = target - (achievementXp() + logXp);
+          saveDebugXpOverride();
+        });
         if (activeTab === "stats") renderStats(); else render();
         showModalStatus(`Level satt till ${btn.dataset.debugBelt} (debug).`, "ok");
       });
     });
     document.getElementById("debugPlusLevelBtn").addEventListener("click", () => {
       const currentLevel = computeLevelInfo(totalXp()).level;
-      const target = xpNeededForLevel(currentLevel + 1);
-      debugXpOverride = target - (achievementXp() + logXp);
-      saveDebugXpOverride();
+      withLevelUpCelebration(() => {
+        const target = xpNeededForLevel(currentLevel + 1);
+        debugXpOverride = target - (achievementXp() + logXp);
+        saveDebugXpOverride();
+      });
       if (activeTab === "stats") renderStats(); else render();
       showModalStatus(`Level satt till ${currentLevel + 1} (debug).`, "ok");
     });
@@ -9239,9 +9825,11 @@ function openBackupModal() {
       const input = document.getElementById("debugLevelInput");
       const lvl = parseInt(input.value, 10);
       if (isNaN(lvl) || lvl < 1) { input.focus(); return; }
-      const target = xpNeededForLevel(lvl);
-      debugXpOverride = target - (achievementXp() + logXp);
-      saveDebugXpOverride();
+      withLevelUpCelebration(() => {
+        const target = xpNeededForLevel(lvl);
+        debugXpOverride = target - (achievementXp() + logXp);
+        saveDebugXpOverride();
+      });
       if (activeTab === "stats") renderStats(); else render();
       showModalStatus(`Level satt till ${lvl} (debug).`, "ok");
     });
@@ -9249,8 +9837,10 @@ function openBackupModal() {
       const input = document.getElementById("debugXpInput");
       const addXp = parseInt(input.value, 10);
       if (isNaN(addXp)) { input.focus(); return; }
-      debugXpOverride += addXp;
-      saveDebugXpOverride();
+      withLevelUpCelebration(() => {
+        debugXpOverride += addXp;
+        saveDebugXpOverride();
+      });
       if (activeTab === "stats") renderStats(); else render();
       input.value = "";
       showModalStatus(`+${addXp} XP tillagt (debug), totalt ${totalXp()} XP.`, "ok");
@@ -9260,6 +9850,17 @@ function openBackupModal() {
       saveDebugXpOverride();
       if (activeTab === "stats") renderStats(); else render();
       showModalStatus("Debug-bonus borttagen, riktig XP (prestationer + loggning) används igen.", "ok");
+    });
+    document.getElementById("debugForceUnlockCosmeticsToggle").addEventListener("change", (e) => {
+      debugForceUnlockCosmetics = e.target.checked;
+      saveDebugForceUnlockCosmetics();
+      renderNav();
+      const sheetCosm = modalRoot.querySelector(".modal-sheet");
+      const scrollTopCosm = sheetCosm ? sheetCosm.scrollTop : 0;
+      openBackupModal();
+      const newSheetCosm = modalRoot.querySelector(".modal-sheet");
+      if (newSheetCosm) newSheetCosm.scrollTop = scrollTopCosm;
+      showModalStatus(debugForceUnlockCosmetics ? "Alla ikoner & ramar visas som upplåsta (debug)." : "Kosmetik-upplåsning avstängd, riktiga nivåer gäller igen.", "ok");
     });
     document.getElementById("debugUnlockAllBtn").addEventListener("click", () => {
       ACHIEVEMENTS.forEach((a) => {
@@ -9287,6 +9888,11 @@ function openBackupModal() {
     saveHaptics();
     vibrate();
   });
+  document.getElementById("soundEffectsToggle").addEventListener("change", (e) => {
+    soundEffectsEnabled = e.target.checked;
+    saveSoundEffects();
+    if (soundEffectsEnabled) playCelebrationChime("achievement");
+  });
   modalRoot.querySelectorAll("[data-tab-color]").forEach((input) => {
     input.addEventListener("input", (e) => {
       tabColors[input.dataset.tabColor] = e.target.value;
@@ -9306,23 +9912,11 @@ function openBackupModal() {
     const newSheet = modalRoot.querySelector(".modal-sheet");
     if (newSheet) newSheet.scrollTop = scrollTop;
   });
-  modalRoot.querySelectorAll("[data-nav-glow-color]").forEach((input) => {
-    input.addEventListener("input", (e) => {
-      navGlowColors[input.dataset.navGlowColor] = e.target.value;
-      saveNavGlowColors();
-      markWeeklyMiscFlag("tabColorChangedWeek");
-      renderNav();
-    });
-  });
   document.getElementById("resetNavGlowColorsBtn").addEventListener("click", () => {
     navGlowColors = { ...TAB_COLOR_DEFAULTS };
     saveNavGlowColors();
     renderNav();
-    const sheet2 = modalRoot.querySelector(".modal-sheet");
-    const scrollTop2 = sheet2 ? sheet2.scrollTop : 0;
-    openBackupModal();
-    const newSheet2 = modalRoot.querySelector(".modal-sheet");
-    if (newSheet2) newSheet2.scrollTop = scrollTop2;
+    renderNavGlowSection();
   });
   document.getElementById("manageTypesFromColorsBtn").addEventListener("click", () => {
     typesModalReturnsToSettings = true;
@@ -9391,7 +9985,7 @@ function renderTabOrderList() {
   if (!list) return;
   list.innerHTML = TABS.map((t, i) => `
     <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px 10px">
-      <img src="${t.emblemImage}" alt="${t.label}" style="width:24px;height:24px;object-fit:contain;flex-shrink:0" />
+      <img src="${resolveTabEmblem(t)}" alt="${t.label}" style="width:24px;height:24px;object-fit:contain;flex-shrink:0" />
       <span style="flex:1;font-size:14px;font-weight:600">${t.label}</span>
       <button class="delete-btn" data-tab-move-up="${i}" ${i === 0 ? "disabled style='opacity:0.25'" : ""}>${ICONS.up}</button>
       <button class="delete-btn" data-tab-move-down="${i}" ${i === TABS.length - 1 ? "disabled style='opacity:0.25'" : ""}>${ICONS.down}</button>
@@ -9420,6 +10014,77 @@ function renderTabOrderList() {
         renderNav();
       }
     });
+  });
+}
+
+// Fristående, likt renderTabOrderList() - ritar bara om sin egen container
+// istället för hela inställningsmenyn. Att välja en flikfärg/effekt ska
+// kännas som en liten justering, inte att sidan laddas om.
+function renderNavGlowSection() {
+  const wrap = document.getElementById("navGlowSection");
+  if (!wrap) return;
+  const currentLevel = computeLevelInfo(totalXp()).level;
+  wrap.innerHTML = TABS.map((t) => {
+    const currentColor = navGlowColors[t.key];
+    const isEffect = FRAME_EFFECT_KEYS.includes(currentColor);
+    return `
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="color" data-nav-glow-color="${t.key}" value="${isEffect ? "#FFFFFF" : currentColor}" style="width:32px;height:32px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
+          <span style="font-size:14px;font-weight:600;flex:1">${t.label}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${FRAME_EFFECT_KEYS.map((key) => {
+            const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+            const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+            const isSelected = currentColor === key;
+            const swatch = profileFrameWrapStyle(key, 2);
+            return `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
+                <button ${isUnlocked ? `data-nav-glow-effect="${t.key}|${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;border-radius:50%;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
+                  <div class="${swatch.className}" style="${swatch.style};width:100%;height:100%;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}">
+                    <div style="width:100%;height:100%;border-radius:50%;background:var(--input-bg)"></div>
+                  </div>
+                </button>
+                ${!isUnlocked ? `<span style="font-size:9px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+  wrap.querySelectorAll("[data-nav-glow-color]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      navGlowColors[input.dataset.navGlowColor] = e.target.value;
+      saveNavGlowColors();
+      markWeeklyMiscFlag("tabColorChangedWeek");
+      renderNav();
+      updateNavGlowSwatchSelection(input.dataset.navGlowColor);
+    });
+  });
+  wrap.querySelectorAll("[data-nav-glow-effect]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const [tabKey, effectKey] = btn.dataset.navGlowEffect.split("|");
+      navGlowColors[tabKey] = navGlowColors[tabKey] === effectKey ? (TAB_COLOR_DEFAULTS[tabKey] || "#8080FF") : effectKey;
+      saveNavGlowColors();
+      markWeeklyMiscFlag("tabColorChangedWeek");
+      renderNav();
+      updateNavGlowSwatchSelection(tabKey);
+    });
+  });
+}
+// Uppdaterar bara vald-markeringen (kantfärg) och färgväljarens värde för en
+// enskild flik, utan att bygga om hela listan - annars skulle ALLA rörliga
+// sken-swatcharna i listan starta om sina animationer för ett enda klick.
+function updateNavGlowSwatchSelection(tabKey) {
+  const currentColor = navGlowColors[tabKey];
+  const isEffect = FRAME_EFFECT_KEYS.includes(currentColor);
+  const colorInput = document.querySelector(`[data-nav-glow-color="${tabKey}"]`);
+  if (colorInput) colorInput.value = isEffect ? "#FFFFFF" : currentColor;
+  document.querySelectorAll(`[data-nav-glow-effect^="${tabKey}|"]`).forEach((btn) => {
+    const key = btn.dataset.navGlowEffect.split("|")[1];
+    btn.style.borderColor = currentColor === key ? tabColors.stats : "transparent";
   });
 }
 
@@ -9689,7 +10354,7 @@ function renderPbExercisesList() {
   const list = document.getElementById("pbExercisesList");
   if (!list) return;
   const expanded = !!settingsListExpanded.pbExercisesList;
-  let html = collapsibleListHeaderHTML("pbExercisesList", "Hantera övningar", pbExercises.length);
+  let html = collapsibleListHeaderHTML("pbExercisesList", "Hantera övningar för personbästa", pbExercises.length);
   if (expanded) {
     html += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px">` + pbExercises.map((p, i) => `
       <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px 10px">
@@ -10322,6 +10987,26 @@ function openAboutModal() {
   });
 }
 
+// Uppdaterar bara profilbilds-elementet (och dess ram), utan att bygga om
+// resten av profil-modalen. Bevarar att andra element (som alla svar-
+// väljarens animationer) inte startar om i onödan.
+function renderProfileAvatarWrap() {
+  const wrap = document.getElementById("profileAvatarWrap");
+  if (!wrap) return;
+  wrap.innerHTML = profileAvatarHTML(88, 3)
+    || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`;
+}
+// Uppdaterar bara vilken ram-swatch som är markerad (kantfärgen på knappen),
+// utan att röra sken-elementen inuti - annars skulle ALLA animationer i
+// listan starta om bara för att man valde en enda.
+function updateProfileFrameSwatchSelection() {
+  const currentFrame = resolveProfileFrame();
+  modalRoot.querySelectorAll("[data-profile-frame]").forEach((btn) => {
+    const isSelected = btn.dataset.profileFrame === currentFrame;
+    btn.style.borderColor = isSelected ? tabColors.stats : "transparent";
+  });
+}
+
 function openProfileModal() {
   pushModalHistoryIfNeeded();
   applyAccentVar();
@@ -10333,6 +11018,50 @@ function openProfileModal() {
     <div class="modal-overlay" id="profileModalOverlay">
       <div class="modal-sheet">
         <h2>Profil</h2>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px">
+          <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
+            || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
+          <div style="display:flex;gap:8px">
+            <button class="modal-btn secondary" id="profileAvatarUploadBtn" style="padding:6px 14px;font-size:12.5px;width:auto">${profile.avatar ? "Byt bild" : "Ladda upp bild"}</button>
+            ${profile.avatar ? `<button class="delete-btn" id="profileAvatarRemoveBtn" style="padding:6px 10px">${ICONS.trash}</button>` : ""}
+          </div>
+          <input type="file" id="profileAvatarFileInput" accept="image/*" style="display:none" />
+        </div>
+        <div style="margin-bottom:14px">
+          ${cardChevronHeaderHTML("profileFramePickerToggle", "Ram runt profilbilden", profileFramePickerExpanded)}
+          ${profileFramePickerExpanded ? `
+          <p style="margin-top:6px;font-size:12px;color:var(--muted);text-align:center">Nya sken låses upp när du levlar upp.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+            ${(() => {
+              const currentLevel = computeLevelInfo(totalXp()).level;
+              const currentFrame = resolveProfileFrame();
+              return Object.keys(PROFILE_FRAMES).map((key) => {
+                const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+                const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+                const isSelected = currentFrame === key;
+                const swatch = profileFrameWrapStyle(key, 2);
+                return `
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
+                    <button ${isUnlocked ? `data-profile-frame="${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;border-radius:50%;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
+                      <div class="${swatch.className}" style="${swatch.style};width:100%;height:100%;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}">
+                        <div style="width:100%;height:100%;border-radius:50%;background:var(--input-bg)"></div>
+                      </div>
+                    </button>
+                    ${!isUnlocked ? `<span style="font-size:9px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
+                  </div>
+                `;
+              }).join("");
+            })()}
+          </div>
+          <div class="toggle-row" style="margin-top:10px">
+            <span style="font-size:13px;font-weight:600">Visa rörligt sken på Level-Badgen</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="beltBadgeFrameToggle" ${beltBadgeFrameEnabled ? "checked" : ""} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          ` : ""}
+        </div>
         ${kampsportAdvancedSectionOpen ? `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${beltSectionOpen ? "10px" : "0"}">
           <div class="field-label" style="margin-bottom:0">Dina bälten</div>
@@ -10427,6 +11156,22 @@ function openProfileModal() {
       openProfileModal();
     });
   }
+  const frameToggleBtn = document.getElementById("profileFramePickerToggle");
+  if (frameToggleBtn) {
+    frameToggleBtn.addEventListener("click", () => {
+      profileFramePickerExpanded = !profileFramePickerExpanded;
+      saveProfileFramePickerExpanded();
+      openProfileModal();
+    });
+  }
+  const beltBadgeFrameToggle = document.getElementById("beltBadgeFrameToggle");
+  if (beltBadgeFrameToggle) {
+    beltBadgeFrameToggle.addEventListener("change", (e) => {
+      beltBadgeFrameEnabled = e.target.checked;
+      saveBeltBadgeFrameEnabled();
+      if (activeTab === "stats") renderStats();
+    });
+  }
   modalRoot.querySelectorAll("[data-profile-belt]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const name = btn.dataset.profileBelt;
@@ -10457,6 +11202,42 @@ function openProfileModal() {
     profile.name = e.target.value;
     saveProfile();
     renderLevelHeroCard();
+  });
+  const avatarUploadBtn = document.getElementById("profileAvatarUploadBtn");
+  const avatarFileInput = document.getElementById("profileAvatarFileInput");
+  if (avatarUploadBtn && avatarFileInput) {
+    avatarUploadBtn.addEventListener("click", () => avatarFileInput.click());
+    avatarFileInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      resizeImageFileToDataUrl(file, 320, 0.85)
+        .then((dataUrl) => {
+          profile.avatar = dataUrl;
+          saveProfile();
+          openProfileModal();
+          renderLevelHeroCard();
+        })
+        .catch(() => { alert("Kunde inte läsa bilden. Prova en annan fil."); });
+    });
+  }
+  const avatarRemoveBtn = document.getElementById("profileAvatarRemoveBtn");
+  if (avatarRemoveBtn) {
+    avatarRemoveBtn.addEventListener("click", () => {
+      profile.avatar = null;
+      saveProfile();
+      openProfileModal();
+      renderLevelHeroCard();
+    });
+  }
+  modalRoot.querySelectorAll("[data-profile-frame]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.profileFrame;
+      profile.frame = profile.frame === key ? null : key;
+      saveProfile();
+      renderProfileAvatarWrap();
+      updateProfileFrameSwatchSelection();
+      renderLevelHeroCard();
+    });
   });
   document.getElementById("profileAge").addEventListener("input", (e) => { profile.age = e.target.value; saveProfile(); });
   document.getElementById("profileHeight").addEventListener("input", (e) => { profile.height = e.target.value; saveProfile(); });
@@ -10950,6 +11731,97 @@ function openMonthRecapModal(monthKey) {
   });
 }
 
+// Tränings-heatmap i stil med GitHubs bidragsgraf: en ruta per dag, färgad
+// efter hur mycket man tränade den dagen (5 nivåer, mörkare = mer tid).
+// Byggs som veckokolumner (måndag-söndag) från årets första till sista dag
+// (eller till idag om det är innevarande år), i en horisontellt scrollbar
+// rad så den funkar på mobil utan att tvinga fram en jättebred modal.
+function yearHeatmapHTML(year, trainingEntries) {
+  const minutesByDate = {};
+  trainingEntries.forEach((e) => { minutesByDate[e.date] = (minutesByDate[e.date] || 0) + e.minutes; });
+
+  const jan1 = `${year}-01-01`;
+  const dec31 = `${year}-12-31`;
+  const isCurrentYear = year === new Date().getFullYear();
+  const rangeEnd = isCurrentYear && todayISO() < dec31 ? todayISO() : dec31;
+
+  const gridStart = mondayOf(jan1);
+  const gridEndMonday = mondayOf(rangeEnd);
+  const msPerWeek = 7 * 86400000;
+  const weeksCount = Math.round((new Date(gridEndMonday + "T00:00:00") - new Date(gridStart + "T00:00:00")) / msPerWeek) + 1;
+
+  function levelFor(mins) {
+    if (!mins) return 0;
+    if (mins < 30) return 1;
+    if (mins < 60) return 2;
+    if (mins < 90) return 3;
+    return 4;
+  }
+  const levelColors = [
+    "var(--border)",
+    hexToRgba(tabColors.traning, 0.30),
+    hexToRgba(tabColors.traning, 0.55),
+    hexToRgba(tabColors.traning, 0.78),
+    hexToRgba(tabColors.traning, 1),
+  ];
+
+  const monthLabels = [];
+  let lastMonth = null;
+  const weekCols = [];
+  for (let w = 0; w < weeksCount; w++) {
+    const weekStartDate = new Date(gridStart + "T00:00:00");
+    weekStartDate.setDate(weekStartDate.getDate() + w * 7);
+    const cells = [];
+    for (let d = 0; d < 7; d++) {
+      const cellDate = new Date(weekStartDate);
+      cellDate.setDate(cellDate.getDate() + d);
+      const iso = toLocalISO(cellDate);
+      const inRange = iso >= jan1 && iso <= rangeEnd;
+      if (d === 0 && inRange) {
+        const m = cellDate.getMonth();
+        if (m !== lastMonth) {
+          monthLabels.push({ weekIndex: w, label: MONTHS_SV[m] });
+          lastMonth = m;
+        }
+      }
+      const mins = minutesByDate[iso] || 0;
+      cells.push({ iso, level: inRange ? levelFor(mins) : -1, mins, inRange });
+    }
+    weekCols.push(cells);
+  }
+
+  const cellSize = 11;
+  const gap = 3;
+  const colWidth = cellSize + gap;
+  const gridWidth = weeksCount * colWidth;
+
+  const monthLabelsHTML = monthLabels.map((m) => `<span style="position:absolute;left:${m.weekIndex * colWidth}px;font-size:10px;color:var(--muted2)">${m.label}</span>`).join("");
+
+  const gridHTML = weekCols.map((cells) => `
+    <div style="display:flex;flex-direction:column;gap:${gap}px">
+      ${cells.map((c) => c.inRange
+        ? `<div title="${fmtDateWithWeekday(c.iso)}${c.mins ? ` · ${fmtMinutes(c.mins)}` : ""}" style="width:${cellSize}px;height:${cellSize}px;border-radius:3px;background:${levelColors[c.level]}"></div>`
+        : `<div style="width:${cellSize}px;height:${cellSize}px"></div>`
+      ).join("")}
+    </div>
+  `).join("");
+
+  return `
+    <div class="card" style="background:var(--bg)">
+      <div class="card-label" style="margin-bottom:6px">🔥 Träningskalender ${year}</div>
+      <div class="heatmap-scroll" style="overflow-x:auto">
+        <div style="position:relative;height:14px;margin-bottom:2px;min-width:${gridWidth}px">${monthLabelsHTML}</div>
+        <div style="display:flex;gap:${gap}px;min-width:${gridWidth}px">${gridHTML}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:8px;font-size:10px;color:var(--muted2)">
+        <span>Mindre</span>
+        ${levelColors.map((c) => `<div style="width:10px;height:10px;border-radius:2px;background:${c}"></div>`).join("")}
+        <span>Mer</span>
+      </div>
+    </div>
+  `;
+}
+
 function openYearReviewModal() {
   pushModalHistoryIfNeeded();
   const currentMondayForYearReview = mondayOf(todayISO());
@@ -10973,6 +11845,10 @@ function openYearReviewModal() {
 
   const yearWeight = weightEntries.filter((e) => e.date.slice(0, 4) === String(currentYear)).sort((a, b) => a.date.localeCompare(b.date));
   const weightDelta = yearWeight.length > 1 ? +(yearWeight[yearWeight.length - 1].value - yearWeight[0].value).toFixed(1) : null;
+  const yearWeightValues = yearWeight.map((e) => e.value);
+  const yearWeightMax = yearWeightValues.length ? Math.max(...yearWeightValues) : null;
+  const yearWeightMin = yearWeightValues.length ? Math.min(...yearWeightValues) : null;
+  const yearWeightSwing = yearWeightMax !== null && yearWeightMin !== null ? +(yearWeightMax - yearWeightMin).toFixed(1) : null;
 
   const weekCounts = {};
   yearTrainingE.forEach((e) => {
@@ -11054,6 +11930,9 @@ function openYearReviewModal() {
           ${longest ? `<div class="goal-row"><span class="goal-label">Längsta passet</span><span class="goal-value" style="color:${typeMeta(longest.type).color}">${fmtMinutes(longest.minutes)} (${typeMeta(longest.type).label})</span></div>` : ""}
           ${shortest ? `<div class="goal-row"><span class="goal-label">Kortaste passet</span><span class="goal-value" style="color:${typeMeta(shortest.type).color}">${fmtMinutes(shortest.minutes)} (${typeMeta(shortest.type).label})</span></div>` : ""}
           ${weightDelta !== null ? `<div class="goal-row"><span class="goal-label">Viktförändring i år</span><span class="goal-value" style="color:${weightDelta > 0 ? "#E8834A" : weightDelta < 0 ? "#4CAF7D" : "var(--text)"}">${weightDelta > 0 ? "+" : ""}${weightDelta} kg</span></div>` : ""}
+          ${yearWeightMax !== null ? `<div class="goal-row"><span class="goal-label">Högsta vikt i år</span><span class="goal-value">${yearWeightMax} kg</span></div>` : ""}
+          ${yearWeightMin !== null ? `<div class="goal-row"><span class="goal-label">Lägsta vikt i år</span><span class="goal-value">${yearWeightMin} kg</span></div>` : ""}
+          ${yearWeightSwing !== null ? `<div class="goal-row"><span class="goal-label">Pendling i år</span><span class="goal-value" style="color:${tabColors.stats}">${yearWeightSwing} kg</span></div>` : ""}
         </div>
         ${yearTrainingE.length === 0 ? `<p>Inga pass loggade i år ännu — dags att sätta igång!</p>` : `<p>Fortsätt så — varje pass räknas.</p>`}
         ${topSubmissions.length ? `
@@ -11070,6 +11949,7 @@ function openYearReviewModal() {
             </div>
           </div>
         ` : ""}
+        ${yearHeatmapHTML(currentYear, yearTrainingE)}
         <div class="modal-close" id="yearReviewCloseBtn">Stäng</div>
       </div>
     </div>
