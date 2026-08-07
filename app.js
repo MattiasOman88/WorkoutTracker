@@ -8518,6 +8518,17 @@ function mergeArrayById(localArr, remoteArr) {
   remote.forEach((e) => { if (e && e.id != null && !byId.has(e.id)) byId.set(e.id, e); });
   return Array.from(byId.values());
 }
+// Som mergeArrayById, men för poster utan ett riktigt id-fält - keyFn
+// bestämmer vad som räknas som samma post (t.ex. startdatum för en
+// bingo-cykel, eller namn+kcal100 för en favoritmatvara).
+function mergeArrayByKey(localArr, remoteArr, keyFn) {
+  const local = Array.isArray(localArr) ? localArr : [];
+  const remote = Array.isArray(remoteArr) ? remoteArr : [];
+  const byKey = new Map();
+  local.forEach((e) => { const k = e && keyFn(e); if (k != null) byKey.set(k, e); });
+  remote.forEach((e) => { const k = e && keyFn(e); if (k != null && !byKey.has(k)) byKey.set(k, e); });
+  return Array.from(byKey.values());
+}
 function mergeArrayStructural(localArr, remoteArr) {
   const local = Array.isArray(localArr) ? localArr : [];
   const remote = Array.isArray(remoteArr) ? remoteArr : [];
@@ -8536,12 +8547,35 @@ function mergeStringArrayUnion(localArr, remoteArr) {
 }
 
 function buildFullSyncPayload() {
+  // Alla historik-listorna synkas numera via sina egna tabeller, inte som en
+  // del av den här JSON-klumpen - se push*ToCloud()-funktionerna nedan. De
+  // exkluderas härifrån (men finns kvar i buildDataPayload() själv, som
+  // fortfarande används av den lokala backup-export/importen). Kvar i
+  // klumpen: inställningar/konfiguration samt "ögonblicksbild"-state
+  // (pågående gympass, aktivt bingo-kort, XP-räknare, prestige) - inget av
+  // det är historik-listor så det vinner inget på egna tabeller.
+  const {
+    weightEntries: _skipWeightEntries,
+    workoutEntries: _skipWorkoutEntries,
+    calorieLog: _skipCalorieLog,
+    bodyMeasurements: _skipBodyMeasurements,
+    pbLog: _skipPbLog,
+    konditionPbLog: _skipKonditionPbLog,
+    gymSessionHistory: _skipGymSessionHistory,
+    bingoHistory: _skipBingoHistory,
+    savedMeals: _skipSavedMeals,
+    foodFavorites: _skipFoodFavorites,
+    ...dataRest
+  } = buildDataPayload();
+  // weeklyChallengeHistory ligger i settings-payloaden (inte data-payloaden)
+  // men synkas numera också via sin egen tabell - samma resonemang som ovan.
+  const { weeklyChallengeHistory: _skipWeeklyChallengeHistory, ...settingsRest } = buildSettingsPayload();
   return {
     app: "traningslogg",
     kind: "cloud_sync",
     localUpdatedAt: localStateUpdatedAt,
-    ...buildDataPayload(),
-    ...buildSettingsPayload(),
+    ...dataRest,
+    ...settingsRest,
   };
 }
 
@@ -8553,10 +8587,23 @@ function buildFullSyncPayload() {
 function mergeRemoteStateIntoLocal(remote) {
   if (!remote || typeof remote !== "object") return;
 
+  // Vikt skickas inte längre i den här klumpen (se pushWeightEntriesToCloud/
+  // weight_entries-tabellen), men raden nedan lämnas kvar med flit: om
+  // användaren senast synkade från en äldre appversion ligger vikten
+  // fortfarande inbäddad i molnets gamla data-fält, och detta fångar upp
+  // den lokalt innan den skrivs över av den nya, städade klumpen.
   if (Array.isArray(remote.weightEntries)) { weightEntries = mergeArrayById(weightEntries, remote.weightEntries).sort((a, b) => a.date.localeCompare(b.date)); persistWeights(); }
+  // Samma resonemang som för vikt ovan - lämnas kvar för att fånga upp ev.
+  // gammal träningspass-data som ligger kvar inbäddad från en äldre version.
   if (Array.isArray(remote.workoutEntries)) { workoutEntries = mergeArrayById(workoutEntries, remote.workoutEntries).sort((a, b) => b.date.localeCompare(a.date)); persistWorkouts(); }
+  // Samma resonemang som för vikt/pass ovan - lämnas kvar för att fånga upp
+  // ev. gammal kalorilogg/kroppsmått-data som ligger kvar inbäddad från en
+  // äldre version.
   if (Array.isArray(remote.calorieLog)) { calorieLog = mergeArrayById(calorieLog, remote.calorieLog); persistCalorieLog(); }
   if (Array.isArray(remote.bodyMeasurements)) { bodyMeasurements = mergeArrayById(bodyMeasurements, remote.bodyMeasurements); persistBodyMeasurements(); }
+  // Samma resonemang som för vikt/pass/kalorier/mått ovan - lämnas kvar för
+  // att fånga upp ev. gammal data som ligger kvar inbäddad från en äldre
+  // version, för alla listor som nu har egna tabeller.
   if (Array.isArray(remote.pbLog)) { pbLog = mergeArrayById(pbLog, remote.pbLog); persistPbLog(); }
   if (Array.isArray(remote.konditionPbLog)) { konditionPbLog = mergeArrayById(konditionPbLog, remote.konditionPbLog); persistKonditionPbLog(); }
   if (Array.isArray(remote.savedMeals)) { savedMeals = mergeArrayById(savedMeals, remote.savedMeals); saveSavedMeals(); }
@@ -8661,6 +8708,22 @@ function mergeRemoteStateIntoLocal(remote) {
   render();
 }
 
+// Generisk avstämning för tabeller med en enkel unik nyckelkolumn (antingen
+// "id", eller ett naturligt unikt datum som "start_date"/"week_start" för de
+// listor som saknar ett riktigt klient-id). Upsertar alla lokala rader och
+// tar sedan bort molnrader som saknar en lokal motsvarighet.
+async function reconcileSingleKeyTable(table, keyCol, rows, localKeyValues) {
+  if (!supabaseClient || !authUser) return;
+  if (rows.length) {
+    const { error } = await supabaseClient.from(table).upsert(rows, { onConflict: `user_id,${keyCol}` });
+    if (error) throw error;
+  }
+  let delQuery = supabaseClient.from(table).delete().eq("user_id", authUser.id);
+  if (localKeyValues.length) delQuery = delQuery.not(keyCol, "in", `(${localKeyValues.join(",")})`);
+  const { error: delError } = await delQuery;
+  if (delError) throw delError;
+}
+
 function cloudSyncStatusLabel() {
   if (!authUser) return "Inte inloggad";
   switch (cloudSyncStatus) {
@@ -8675,6 +8738,285 @@ function renderSyncStatusIfVisible() {
   if (el) el.textContent = cloudSyncStatusLabel();
 }
 
+// Vikt har en egen tabell (weight_entries) istället för att ligga i
+// app_state-klumpen - första steget i att bryta ur data till separata
+// tabeller. Varje synk gör en full avstämning: alla lokala poster
+// upsertas, och molnposter som inte längre finns lokalt (borttagna) tas
+// bort. Enkelt och självläkande - ingen risk för att lokalt och moln
+// glider isär även om ett synk-tillfälle missas.
+async function pushWeightEntriesToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = weightEntries.map((e) => ({ user_id: authUser.id, id: e.id, date: e.date, value: e.value, updated_at: new Date().toISOString() }));
+  if (rows.length) {
+    const { error } = await supabaseClient.from("weight_entries").upsert(rows, { onConflict: "user_id,id" });
+    if (error) throw error;
+  }
+  const localIds = weightEntries.map((e) => e.id);
+  let delQuery = supabaseClient.from("weight_entries").delete().eq("user_id", authUser.id);
+  if (localIds.length) delQuery = delQuery.not("id", "in", `(${localIds.join(",")})`);
+  const { error: delError } = await delQuery;
+  if (delError) throw delError;
+}
+
+async function pullAndMergeWeightEntriesFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("weight_entries").select("id,date,value").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    weightEntries = mergeArrayById(weightEntries, data).sort((a, b) => a.date.localeCompare(b.date));
+    persistWeights();
+  }
+}
+
+// Träningspass har fler valfria fält (note, submissions, gymSplit, ratings,
+// customLabel) som kan variera/växa - date/type/minutes får egna kolumner
+// (det man vill kunna fråga/analysera på), resten läggs i en jsonb-kolumn
+// (extra) så tabellen inte behöver ändras varje gång ett nytt fält tillkommer.
+function workoutEntryExtraFields(e) {
+  const { id, date, type, minutes, ...rest } = e;
+  return rest;
+}
+async function pushWorkoutEntriesToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = workoutEntries.map((e) => ({
+    user_id: authUser.id, id: e.id, date: e.date, type: e.type, minutes: e.minutes,
+    extra: workoutEntryExtraFields(e), updated_at: new Date().toISOString(),
+  }));
+  if (rows.length) {
+    const { error } = await supabaseClient.from("workout_entries").upsert(rows, { onConflict: "user_id,id" });
+    if (error) throw error;
+  }
+  const localIds = workoutEntries.map((e) => e.id);
+  let delQuery = supabaseClient.from("workout_entries").delete().eq("user_id", authUser.id);
+  if (localIds.length) delQuery = delQuery.not("id", "in", `(${localIds.join(",")})`);
+  const { error: delError } = await delQuery;
+  if (delError) throw delError;
+}
+
+async function pullAndMergeWorkoutEntriesFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("workout_entries").select("id,date,type,minutes,extra").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, ...(r.extra || {}) }));
+    workoutEntries = mergeArrayById(workoutEntries, remote).sort((a, b) => b.date.localeCompare(a.date));
+    persistWorkouts();
+  }
+}
+
+// Kalorilogg: samma extra-jsonb-mönster som träningspass, eftersom poster
+// kan komma från livsmedelssök (fler fält: makron, mängd m.m.) eller en
+// enkel manuell in-/förbränningsrad.
+function calorieEntryExtraFields(e) {
+  const { id, date, kcal, type, ...rest } = e;
+  return rest;
+}
+async function pushCalorieLogToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = calorieLog.map((e) => ({
+    user_id: authUser.id, id: e.id, date: e.date, kcal: e.kcal, type: e.type,
+    extra: calorieEntryExtraFields(e), updated_at: new Date().toISOString(),
+  }));
+  if (rows.length) {
+    const { error } = await supabaseClient.from("calorie_log").upsert(rows, { onConflict: "user_id,id" });
+    if (error) throw error;
+  }
+  const localIds = calorieLog.map((e) => e.id);
+  let delQuery = supabaseClient.from("calorie_log").delete().eq("user_id", authUser.id);
+  if (localIds.length) delQuery = delQuery.not("id", "in", `(${localIds.join(",")})`);
+  const { error: delError } = await delQuery;
+  if (delError) throw delError;
+}
+async function pullAndMergeCalorieLogFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("calorie_log").select("id,date,kcal,type,extra").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, kcal: r.kcal, type: r.type, ...(r.extra || {}) }));
+    calorieLog = mergeArrayById(calorieLog, remote);
+    persistCalorieLog();
+  }
+}
+
+// Kroppsmått: enkel fast form, ingen extra-jsonb behövs.
+async function pushBodyMeasurementsToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = bodyMeasurements.map((e) => ({
+    user_id: authUser.id, id: e.id, date: e.date, type_id: e.typeId, value: e.value, updated_at: new Date().toISOString(),
+  }));
+  if (rows.length) {
+    const { error } = await supabaseClient.from("body_measurements").upsert(rows, { onConflict: "user_id,id" });
+    if (error) throw error;
+  }
+  const localIds = bodyMeasurements.map((e) => e.id);
+  let delQuery = supabaseClient.from("body_measurements").delete().eq("user_id", authUser.id);
+  if (localIds.length) delQuery = delQuery.not("id", "in", `(${localIds.join(",")})`);
+  const { error: delError } = await delQuery;
+  if (delError) throw delError;
+}
+async function pullAndMergeBodyMeasurementsFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("body_measurements").select("id,date,type_id,value").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, typeId: r.type_id, value: r.value }));
+    bodyMeasurements = mergeArrayById(bodyMeasurements, remote);
+    persistBodyMeasurements();
+  }
+}
+
+// PB-logg (styrka): enkel fast form, ingen extra-jsonb behövs.
+async function pushPbLogToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = pbLog.map((e) => ({ user_id: authUser.id, id: e.id, date: e.date, exercise_id: e.exerciseId, value: e.value, updated_at: new Date().toISOString() }));
+  await reconcileSingleKeyTable("pb_log", "id", rows, pbLog.map((e) => e.id));
+}
+async function pullAndMergePbLogFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("pb_log").select("id,date,exercise_id,value").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, exerciseId: r.exercise_id, value: r.value }));
+    pbLog = mergeArrayById(pbLog, remote);
+    persistPbLog();
+  }
+}
+
+// PB-logg (kondition): enkel fast form, ingen extra-jsonb behövs.
+async function pushKonditionPbLogToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = konditionPbLog.map((e) => ({ user_id: authUser.id, id: e.id, date: e.date, distance_id: e.distanceId, type: e.type, minutes: e.minutes, updated_at: new Date().toISOString() }));
+  await reconcileSingleKeyTable("kondition_pb_log", "id", rows, konditionPbLog.map((e) => e.id));
+}
+async function pullAndMergeKonditionPbLogFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("kondition_pb_log").select("id,date,distance_id,type,minutes").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, distanceId: r.distance_id, type: r.type, minutes: r.minutes }));
+    konditionPbLog = mergeArrayById(konditionPbLog, remote);
+    persistKonditionPbLog();
+  }
+}
+
+// Gympass-historik: övningarna (namn + set) läggs i en egen jsonb-kolumn
+// eftersom det är en nästlad struktur, inte ett gäng valfria fält.
+async function pushGymSessionHistoryToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = gymSessionHistory.map((e) => ({
+    user_id: authUser.id, id: e.id, date: e.date, split_id: e.splitId || null,
+    total_volume: e.totalVolume || 0, exercises: e.exercises || [], updated_at: new Date().toISOString(),
+  }));
+  await reconcileSingleKeyTable("gym_session_history", "id", rows, gymSessionHistory.map((e) => e.id));
+}
+async function pullAndMergeGymSessionHistoryFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("gym_session_history").select("id,date,split_id,total_volume,exercises").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, date: r.date, splitId: r.split_id, totalVolume: r.total_volume, exercises: r.exercises || [] }));
+    gymSessionHistory = mergeArrayById(gymSessionHistory, remote);
+    saveGymSessionHistory();
+  }
+}
+
+// Bingo-historik: har inget klient-id i appen, så startdatumet (en cykel
+// per gång) fungerar som naturlig unik nyckel istället.
+async function pushBingoHistoryToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = bingoHistory.map((e) => ({
+    user_id: authUser.id, start_date: e.startDate, end_date: e.endDate || null,
+    checked_count: e.checkedCount || 0, is_full: !!e.isFull, line_count: e.lineCount || 0,
+    has_corners: !!e.hasCorners, has_x: !!e.hasX, xp: e.xp || 0, updated_at: new Date().toISOString(),
+  }));
+  await reconcileSingleKeyTable("bingo_history", "start_date", rows, bingoHistory.map((e) => e.startDate));
+}
+async function pullAndMergeBingoHistoryFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("bingo_history").select("start_date,end_date,checked_count,is_full,line_count,has_corners,has_x,xp").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({
+      startDate: r.start_date, endDate: r.end_date, checkedCount: r.checked_count, isFull: r.is_full,
+      lineCount: r.line_count, hasCorners: r.has_corners, hasX: r.has_x, xp: r.xp,
+    }));
+    bingoHistory = mergeArrayByKey(bingoHistory, remote, (e) => e.startDate);
+    saveBingoHistory();
+  }
+}
+
+// Veckoutmaning-historik: samma resonemang - veckostart är den naturliga
+// unika nyckeln.
+async function pushWeeklyChallengeHistoryToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = weeklyChallengeHistory.map((e) => ({
+    user_id: authUser.id, week_start: e.weekStart, completed: e.completed || 0, total: e.total || 0, updated_at: new Date().toISOString(),
+  }));
+  await reconcileSingleKeyTable("weekly_challenge_history", "week_start", rows, weeklyChallengeHistory.map((e) => e.weekStart));
+}
+async function pullAndMergeWeeklyChallengeHistoryFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("weekly_challenge_history").select("week_start,completed,total").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ weekStart: r.week_start, completed: r.completed, total: r.total }));
+    weeklyChallengeHistory = mergeArrayByKey(weeklyChallengeHistory, remote, (e) => e.weekStart);
+    saveWeeklyChallengeHistory();
+  }
+}
+
+// Sparade måltider: namn får en egen kolumn, resten (kcal/makron/
+// ingredienser) i extra-jsonb.
+function savedMealExtraFields(e) {
+  const { id, name, ...rest } = e;
+  return rest;
+}
+async function pushSavedMealsToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const rows = savedMeals.map((e) => ({ user_id: authUser.id, id: e.id, name: e.name, extra: savedMealExtraFields(e), updated_at: new Date().toISOString() }));
+  await reconcileSingleKeyTable("saved_meals", "id", rows, savedMeals.map((e) => e.id));
+}
+async function pullAndMergeSavedMealsFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("saved_meals").select("id,name,extra").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ id: r.id, name: r.name, ...(r.extra || {}) }));
+    savedMeals = mergeArrayById(savedMeals, remote);
+    saveSavedMeals();
+  }
+}
+
+// Favoritmatvaror: inget id i appen - den identifierar en favorit via
+// namn+kcal100, som blir en sammansatt nyckel i tabellen. Med en
+// sammansatt nyckel funkar inte "ta bort det som saknas lokalt"-tricket med
+// en enda kolumn, så här görs istället en full ersättning vid varje synk
+// (radera allt, skriv in det som finns lokalt igen) - en liten lista så det
+// är inget problem prestandamässigt.
+async function pushFoodFavoritesToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { error: delError } = await supabaseClient.from("food_favorites").delete().eq("user_id", authUser.id);
+  if (delError) throw delError;
+  if (foodFavorites.length) {
+    const rows = foodFavorites.map((e) => ({
+      user_id: authUser.id, name: e.name, kcal100: e.kcal100,
+      extra: { brand: e.brand || "", protein100: e.protein100, fat100: e.fat100, carbs100: e.carbs100 },
+    }));
+    const { error } = await supabaseClient.from("food_favorites").insert(rows);
+    if (error) throw error;
+  }
+}
+async function pullAndMergeFoodFavoritesFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("food_favorites").select("name,kcal100,extra").eq("user_id", authUser.id);
+  if (error) throw error;
+  if (Array.isArray(data) && data.length) {
+    const remote = data.map((r) => ({ name: r.name, kcal100: r.kcal100, ...(r.extra || {}) }));
+    foodFavorites = mergeArrayByKey(foodFavorites, remote, (e) => `${e.name}|${e.kcal100}`);
+    saveFoodFavorites();
+  }
+}
+
 async function pushStateToCloud() {
   if (!supabaseClient || !authUser) return;
   if (cloudSyncInFlight) { cloudSyncQueuedWhileInFlight = true; return; }
@@ -8685,6 +9027,17 @@ async function pushStateToCloud() {
     const payload = buildFullSyncPayload();
     const { error } = await supabaseClient.from("app_state").upsert({ user_id: authUser.id, data: payload }, { onConflict: "user_id" });
     if (error) throw error;
+    await pushWeightEntriesToCloud();
+    await pushWorkoutEntriesToCloud();
+    await pushCalorieLogToCloud();
+    await pushBodyMeasurementsToCloud();
+    await pushPbLogToCloud();
+    await pushKonditionPbLogToCloud();
+    await pushGymSessionHistoryToCloud();
+    await pushBingoHistoryToCloud();
+    await pushWeeklyChallengeHistoryToCloud();
+    await pushSavedMealsToCloud();
+    await pushFoodFavoritesToCloud();
     cloudSyncStatus = "idle";
     cloudSyncErrorMsg = "";
   } catch (e) {
@@ -8717,6 +9070,21 @@ async function pullAndMergeFromCloud() {
     const { data, error } = await supabaseClient.from("app_state").select("data").eq("user_id", authUser.id).maybeSingle();
     if (error) throw error;
     if (data && data.data) mergeRemoteStateIntoLocal(data.data);
+    // OBS ordning: hämta+slå ihop de utbrutna tabellerna FÖRE push, så att
+    // ev. gammal data som fortfarande låg inbäddad i app_state-klumpen (från
+    // innan de fick egna tabeller) hinner slås ihop lokalt innan vi skriver
+    // den nya, städade klumpen och de nya tabellerna till molnet.
+    await pullAndMergeWeightEntriesFromCloud();
+    await pullAndMergeWorkoutEntriesFromCloud();
+    await pullAndMergeCalorieLogFromCloud();
+    await pullAndMergeBodyMeasurementsFromCloud();
+    await pullAndMergePbLogFromCloud();
+    await pullAndMergeKonditionPbLogFromCloud();
+    await pullAndMergeGymSessionHistoryFromCloud();
+    await pullAndMergeBingoHistoryFromCloud();
+    await pullAndMergeWeeklyChallengeHistoryFromCloud();
+    await pullAndMergeSavedMealsFromCloud();
+    await pullAndMergeFoodFavoritesFromCloud();
     await pushStateToCloud();
   } catch (e) {
     cloudSyncStatus = "error";
