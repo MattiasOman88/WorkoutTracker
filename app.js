@@ -658,6 +658,27 @@ function saveNavIconSize() {
 }
 let navIconSize = loadNavIconSize();
 
+function loadLeaderboardSize() {
+  try {
+    const raw = parseInt(localStorage.getItem("leaderboard_size_v1"), 10);
+    return [10, 15, 20, 30, 50].includes(raw) ? raw : 15;
+  } catch (e) { return 15; }
+}
+function saveLeaderboardSize() {
+  try { localStorage.setItem("leaderboard_size_v1", String(leaderboardSize)); } catch (e) { /* ignore */ }
+}
+let leaderboardSize = loadLeaderboardSize();
+function loadLeaderboardGenderFilter() {
+  try {
+    const raw = localStorage.getItem("leaderboard_gender_filter_v1");
+    return raw === "man" || raw === "kvinna" ? raw : "all";
+  } catch (e) { return "all"; }
+}
+function saveLeaderboardGenderFilter() {
+  try { localStorage.setItem("leaderboard_gender_filter_v1", leaderboardGenderFilter); } catch (e) { /* ignore */ }
+}
+let leaderboardGenderFilter = loadLeaderboardGenderFilter();
+
 function loadShowNavLabels() {
   try { const raw = localStorage.getItem("show_nav_labels_v1"); return raw === null ? true : raw === "true"; } catch (e) { return true; }
 }
@@ -974,10 +995,11 @@ function macroColorFor(macroKey, grams, bodyweightKg) {
   return "#E15554";
 }
 let backupSectionOpen = false;
-let accountSectionOpen = false;
 let authFormMode = "login"; // "login" | "signup"
 let authFormError = "";
 let authFormBusy = false;
+let profilePasswordSectionOpen = false;
+let leaderboardSettingsSectionOpen = false;
 let debugSectionOpen = false;
 let debugUnlockedThisSession = false;
 const DEBUG_PIN_HASH = "5a4a0c923c9a9f9edb8a8f6aa3f6212708ad91b6895f3e5fa606710570b1f1f4";
@@ -1026,19 +1048,19 @@ let advancedQuestions = loadAdvancedQuestions();
 
 const DEFAULT_SUBMISSION_TYPES = [
   // Chokes
-  { id: "anaconda", label: "Anaconda Choke", enabled: true, category: "chokes" },
-  { id: "arm_triangle", label: "Arm Triangle Choke", enabled: true, category: "chokes" },
-  { id: "bow_and_arrow", label: "Bow and Arrow Choke", enabled: true, category: "chokes" },
+  { id: "anaconda", label: "Anaconda", enabled: true, category: "chokes" },
+  { id: "arm_triangle", label: "Arm Triangle", enabled: true, category: "chokes" },
+  { id: "bow_and_arrow", label: "Bow and Arrow", enabled: true, category: "chokes" },
   { id: "clock_choke", label: "Clock Choke", enabled: true, category: "chokes" },
-  { id: "darce", label: "D'Arce Choke", enabled: true, category: "chokes" },
-  { id: "ezekiel", label: "Ezekiel Choke", enabled: true, category: "chokes" },
-  { id: "guillotine", label: "Guillotine Choke", enabled: true, category: "chokes" },
-  { id: "north_south", label: "North-South Choke", enabled: true, category: "chokes" },
-  { id: "paper_cutter", label: "Paper Cutter Choke", enabled: true, category: "chokes" },
+  { id: "darce", label: "D'Arce", enabled: true, category: "chokes" },
+  { id: "ezekiel", label: "Ezekiel", enabled: true, category: "chokes" },
+  { id: "guillotine", label: "Guillotine", enabled: true, category: "chokes" },
+  { id: "north_south", label: "North-South", enabled: true, category: "chokes" },
+  { id: "paper_cutter", label: "Paper Cutter", enabled: true, category: "chokes" },
   { id: "peruvian_necktie", label: "Peruvian Necktie", enabled: true, category: "chokes" },
   { id: "rnc", label: "RNC", enabled: true, category: "chokes" },
-  { id: "triangle", label: "Triangle Choke", enabled: true, category: "chokes" },
-  { id: "scissors_choke", label: "Scissors Choke", enabled: true, category: "chokes" },
+  { id: "triangle", label: "Triangle", enabled: true, category: "chokes" },
+  { id: "scissors_choke", label: "Scissors", enabled: true, category: "chokes" },
   // Armlås
   { id: "americana", label: "Americana", enabled: true, category: "armlocks" },
   { id: "armbar", label: "Armbar", enabled: true, category: "armlocks" },
@@ -1056,7 +1078,6 @@ const DEFAULT_SUBMISSION_TYPES = [
   { id: "banana_split", label: "Banana Split", enabled: true, category: "leglocks" },
   { id: "calf_slicer", label: "Calf Slicer", enabled: true, category: "leglocks" },
   { id: "estima_lock", label: "Estima Lock", enabled: true, category: "leglocks" },
-  { id: "figure_four_ankle_lock", label: "Figure-Four Ankle Lock", enabled: true, category: "leglocks" },
   { id: "heel_hook_inside", label: "Heel Hook (Inside)", enabled: true, category: "leglocks" },
   { id: "heel_hook_outside", label: "Heel Hook (Outside)", enabled: true, category: "leglocks" },
   { id: "kneebar", label: "Kneebar", enabled: true, category: "leglocks" },
@@ -1070,7 +1091,34 @@ const SUBMISSION_MIGRATIONS = {
   armbar: { category: "armlocks" },
   tarikoplata: { category: "armlocks" },
   scarf_hold_armlock: { category: "armlocks", label: "Scarf Hold" },
+  // "Choke" borttaget ur namnet på alla utom Clock Choke (2026) - kortare namn i menyn.
+  anaconda: { label: "Anaconda" },
+  arm_triangle: { label: "Arm Triangle" },
+  bow_and_arrow: { label: "Bow and Arrow" },
+  darce: { label: "D'Arce" },
+  ezekiel: { label: "Ezekiel" },
+  guillotine: { label: "Guillotine" },
+  north_south: { label: "North-South" },
+  paper_cutter: { label: "Paper Cutter" },
+  triangle: { label: "Triangle" },
+  scissors_choke: { label: "Scissors" },
 };
+// Submissions som helt tagits bort (t.ex. dubbletter). Filtreras bort ur
+// sparade listor - historiska pass som redan loggat dem påverkas inte.
+const RETIRED_SUBMISSION_IDS = new Set(["figure_four_ankle_lock"]);
+function migrateSubmissionTypesList(list) {
+  const withCategory = list
+    .filter((s) => s && !RETIRED_SUBMISSION_IDS.has(s.id))
+    .map((s) => {
+      if (SUBMISSION_MIGRATIONS[s.id]) return { ...s, ...SUBMISSION_MIGRATIONS[s.id] };
+      if (s.category !== undefined) return s;
+      const def = DEFAULT_SUBMISSION_TYPES.find((d) => d.id === s.id);
+      return { ...s, category: def ? def.category : null };
+    });
+  const existingIds = new Set(withCategory.map((s) => s.id));
+  const newDefaults = DEFAULT_SUBMISSION_TYPES.filter((d) => !existingIds.has(d.id)).map((d) => ({ ...d }));
+  return [...withCategory, ...newDefaults];
+}
 const SUBMISSION_CATEGORY_LABELS = { chokes: "Stryp", armlocks: "Armlås", leglocks: "Ben- och fotledsvarianter" };
 const SUBMISSION_CATEGORY_ORDER = ["chokes", "armlocks", "leglocks", null];
 function groupSubmissionsByCategory(list) {
@@ -1094,15 +1142,7 @@ function loadSubmissionTypes() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) {
-        const withCategory = parsed.map((s) => {
-          if (SUBMISSION_MIGRATIONS[s.id]) return { ...s, ...SUBMISSION_MIGRATIONS[s.id] };
-          if (s.category !== undefined) return s;
-          const def = DEFAULT_SUBMISSION_TYPES.find((d) => d.id === s.id);
-          return { ...s, category: def ? def.category : null };
-        });
-        const existingIds = new Set(withCategory.map((s) => s.id));
-        const newDefaults = DEFAULT_SUBMISSION_TYPES.filter((d) => !existingIds.has(d.id)).map((d) => ({ ...d }));
-        return [...withCategory, ...newDefaults];
+        return migrateSubmissionTypesList(parsed);
       }
     }
   } catch (e) { /* fall through */ }
@@ -1151,19 +1191,43 @@ let konditionMenuEnabled = loadKonditionMenuEnabled();
 
 /* ---------------- Personbästa (PB) ---------------- */
 
+// Rimlighetstak per övning (kg), så ingen kan logga skämtvärden (typ "2000
+// kg bänkpress") som sedan dyker upp i topplistan. Satt en bit under
+// svenska rekordnivåer men över vad en amatör realistiskt lyfter - är man
+// verkligen så stark får man höra av sig så läggs det in manuellt istället.
+// Gäller bara de fem standardövningarna; egna tillagda övningar har inget
+// tak (vi känner inte till rimliga värden för dem).
+// Chins loggas som antal repetitioner, övriga standardövningar i kg.
+const PB_EXERCISE_CAPS = {
+  squat: 300,
+  bench: 180,
+  deadlift: 320,
+  ohp: 150,
+  pullup: 30,
+};
+const PB_CAP_CONTACT_EMAIL = "mattiasoman88@gmail.com";
 const DEFAULT_PB_EXERCISES = [
-  { id: "squat", label: "Knäböj", enabled: true },
-  { id: "bench", label: "Bänkpress", enabled: true },
-  { id: "deadlift", label: "Marklyft", enabled: true },
-  { id: "ohp", label: "Militärpress", enabled: true },
-  { id: "pullup", label: "Chins", enabled: true },
+  { id: "squat", label: "Knäböj", enabled: true, unit: "kg" },
+  { id: "bench", label: "Bänkpress", enabled: true, unit: "kg" },
+  { id: "deadlift", label: "Marklyft", enabled: true, unit: "kg" },
+  { id: "ohp", label: "Militärpress", enabled: true, unit: "kg" },
+  { id: "pullup", label: "Chins", enabled: true, unit: "reps" },
 ];
+// Äldre sparad data (lokalt eller i molnet) har inget unit-fält - anta kg
+// för allt utom Chins, som alltid ska räknas i antal repetitioner.
+function migratePbExercisesList(list) {
+  return list.map((p) => {
+    if (p.id === "pullup") return { ...p, unit: "reps" };
+    if (p.unit === "kg" || p.unit === "reps") return p;
+    return { ...p, unit: "kg" };
+  });
+}
 function loadPbExercises() {
   try {
     const raw = localStorage.getItem("pb_exercises_v1");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
+      if (Array.isArray(parsed) && parsed.length) return migratePbExercisesList(parsed);
     }
   } catch (e) { /* fall through */ }
   return JSON.parse(JSON.stringify(DEFAULT_PB_EXERCISES));
@@ -1193,6 +1257,28 @@ function saveShowPbCard() {
 let pbExercises = loadPbExercises();
 let pbLog = loadPbLog();
 let showPbCard = loadShowPbCard();
+
+// Synlighet i topplistan: "hidden" (default, med helt utanför alla
+// jämförelser), "anonymous" (räknas med och syns i listan, men utan namn),
+// "visible" (räknas med och syns med profilnamnet). Sparas i en egen
+// Supabase-tabell (inte i JSON-klumpen) eftersom serverfunktionerna som
+// räknar ut rankningar behöver kunna läsa alla användares val.
+function loadLeaderboardVisibility() {
+  try {
+    const raw = localStorage.getItem("leaderboard_visibility_v1");
+    return raw === "anonymous" || raw === "visible" ? raw : "hidden";
+  } catch (e) { return "hidden"; }
+}
+function saveLeaderboardVisibility() {
+  try { localStorage.setItem("leaderboard_visibility_v1", leaderboardVisibility); } catch (e) { /* ignore */ }
+}
+let leaderboardVisibility = loadLeaderboardVisibility();
+// Cache för hämtade rank-badges (nyckel -> {rank,total} eller null), så vi
+// inte behöver fråga servern på nytt varje gång kortet ritas om.
+let pbRankCache = {};
+// De rader (övningar/distanser) som senast ritades i Personbästa-kortet,
+// sparade så loadPbRanks() vet vilka rader den ska hämta rank åt.
+let lastPbRows = [];
 
 function loadShowPbHistory() {
   try {
@@ -1224,6 +1310,17 @@ const DEFAULT_KONDITION_PB_DISTANCES = [
   { id: "halvmara", label: "Halvmaraton", enabled: true },
   { id: "maraton", label: "Maraton", enabled: true },
 ];
+// Kortaste rimliga tid (minuter) per distans + träningstyp, så man inte kan
+// mata in orimligt snabba (uppenbart felaktiga) tider. Satt en bit under
+// elit-/världsrekordnivå. Gäller bara standarddistanserna ihop med de tre
+// kondition-typer som finns som standard - egna tillagda distanser/typer
+// har ingen spärr (precis som styrke-taken ovan bara gäller standardövningar).
+const KONDITION_PB_MIN_MINUTES = {
+  "5k": { Jogging: 12, Cykel: 4, Motionscykel: 6 },
+  "10k": { Jogging: 26, Cykel: 8, Motionscykel: 12 },
+  halvmara: { Jogging: 57, Cykel: 18, Motionscykel: 25 },
+  maraton: { Jogging: 120, Cykel: 36, Motionscykel: 51 },
+};
 function loadKonditionPbDistances() {
   try {
     const raw = localStorage.getItem("kondition_pb_distances_v1");
@@ -1519,6 +1616,10 @@ const EMBLEM_ICON_TRANING = "badges/EMBLEM_ICON_TRANING.png";
 const EMBLEM_ICON_KALORIER = "badges/EMBLEM_ICON_KALORIER.png";
 const EMBLEM_ICON_STATS = "badges/EMBLEM_ICON_STATS.png";
 const APP_ICON_IMG = "badges/APP_ICON_IMG.png";
+const CELEBRATION_IMG_LEVELUP = "badges/CELEBRATION_IMG_LEVELUP.png";
+const CELEBRATION_IMG_MONTHRECAP = "badges/CELEBRATION_IMG_MONTHRECAP.png";
+const CELEBRATION_IMG_WEEKLYBONUS = "badges/CELEBRATION_IMG_WEEKLYBONUS.png";
+const CELEBRATION_IMG_WEEKLYCHALLENGE = "badges/CELEBRATION_IMG_WEEKLYCHALLENGE.png";
 // EMBLEM_ICON_TRANING_RUN_GREEN behålls som fallback-ikon (används när
 // levelTheme är "run" och man inte valt en egen ikon, se längre ner) även om
 // den inte längre är ett eget val i väljaren.
@@ -3633,7 +3734,9 @@ function showNextCelebration() {
 
   if (item.type === "achievement") {
     const a = item.achievement;
-    const iconHTML = a.emoji
+    const iconHTML = a.badgeImage
+      ? `<img src="${a.badgeImage}" alt="${a.title}" style="width:58px;height:58px;object-fit:contain;display:block" />`
+      : a.emoji
       ? `<span style="font-size:32px;line-height:1">${a.emoji}</span>`
       : `<span style="width:34px;height:34px;display:flex">${ICONS[a.icon]}</span>`;
     overlay.innerHTML = `
@@ -3655,7 +3758,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card">
         <div class="celebration-icon" style="color:${tabColors.traning};border-color:${tabColors.traning}">
-          <span style="width:34px;height:34px;display:flex">${ICONS.target}</span>
+          <img src="${CELEBRATION_IMG_WEEKLYCHALLENGE}" alt="" style="width:58px;height:58px;object-fit:contain;display:block" />
         </div>
         <div class="celebration-title">✅ Utmaning klarad!</div>
         <div class="celebration-sub">Veckans utmaning</div>
@@ -3669,7 +3772,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card">
         <div class="celebration-icon" style="color:${tabColors.traning};border-color:${tabColors.traning}">
-          <span style="width:34px;height:34px;display:flex">${ICONS.crown}</span>
+          <img src="${CELEBRATION_IMG_WEEKLYBONUS}" alt="" style="width:58px;height:58px;object-fit:contain;display:block" />
         </div>
         <div class="celebration-title">🏆 Veckan klarad!</div>
         <div class="celebration-sub">Alla tre utmaningar klara denna vecka</div>
@@ -3681,7 +3784,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card">
         <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}">
-          <span style="width:34px;height:34px;display:flex">${ICONS.calendarCheck}</span>
+          <img src="${CELEBRATION_IMG_MONTHRECAP}" alt="" style="width:58px;height:58px;object-fit:contain;display:block" />
         </div>
         <div class="celebration-title">📅 Ny sammanfattning!</div>
         <div class="celebration-sub">${monthKeyLabel(item.monthKey)} är sammanställd</div>
@@ -3693,7 +3796,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card">
         <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}">
-          <span style="width:34px;height:34px;display:flex">${ICONS.trophy}</span>
+          <img src="${CELEBRATION_IMG_LEVELUP}" alt="" style="width:58px;height:58px;object-fit:contain;display:block" />
         </div>
         <div class="celebration-title">🚀 Level up!</div>
         <div class="celebration-sub">Du är nu</div>
@@ -3795,10 +3898,10 @@ function openBingoModal() {
           <p style="margin-top:-8px;font-size:12.5px;color:var(--muted)">${daysLeft} ${daysLeft === 1 ? "dag" : "dagar"} kvar av den här brickan.</p>
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:4px 0 10px">
             ${bingoCard.squares.map((sq, i) => `
-              <div data-bingo-square="${i}" style="aspect-ratio:1;border:1px solid var(--border2);border-radius:6px;background:${sq.checked ? `${tabColors.traning}26` : "var(--input-bg)"};${sq.checked ? `border-color:${tabColors.traning};color:${tabColors.traning};font-weight:600;` : ""}${sq.type === "wild" ? "border-style:dashed;" : ""}display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;padding:3px;${sq.checked ? "cursor:pointer" : ""}">${escapeHtml(sq.label)}</div>
+              <div style="aspect-ratio:1;border:1px solid var(--border2);border-radius:6px;background:${sq.checked ? `${tabColors.traning}26` : "var(--input-bg)"};${sq.checked ? `border-color:${tabColors.traning};color:${tabColors.traning};font-weight:600;` : ""}${sq.type === "wild" ? "border-style:dashed;" : ""}display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;padding:3px">${escapeHtml(sq.label)}</div>
             `).join("")}
           </div>
-          <p style="font-size:11.5px;color:var(--muted);margin-top:-4px">Rutor kryssas i automatiskt när du loggar submissionen under ett träningspass. Tryck på en ikryssad ruta för att rätta ett misstag.</p>
+          <p style="font-size:11.5px;color:var(--muted);margin-top:-4px">Rutor kryssas i automatiskt när du loggar submissionen under ett träningspass.</p>
           <div class="card" style="background:var(--bg);margin-bottom:0">
             <div class="goal-row"><span class="goal-label">Rader klara</span><span class="goal-value">${stats.lineCount}</span></div>
             <div class="goal-row"><span class="goal-label">Kryss (X)</span><span class="goal-value">${stats.hasX ? "Ja" : "Nej"}</span></div>
@@ -3819,19 +3922,6 @@ function openBingoModal() {
         </div>
       </div>
     `;
-    document.querySelectorAll("[data-bingo-square]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const i = parseInt(el.dataset.bingoSquare, 10);
-        const sq = bingoCard.squares[i];
-        if (!sq.checked) return;
-        sq.checked = false;
-        bingoLifetimeStats.squaresChecked -= 1;
-        saveBingoLifetimeStats();
-        saveBingoCard();
-        render();
-        renderBingoCard();
-      });
-    });
     const rerollBtn = document.getElementById("rerollBingoBtn");
     if (rerollBtn) rerollBtn.addEventListener("click", () => { rerollBingoCard(); render(); renderBingoCard(); });
     const restartBtn = document.getElementById("restartBingoBtn");
@@ -3879,7 +3969,7 @@ function weeklyChallengeCardHTML() {
         ${rows}
         ${doneCount === 3 ? `
           <div style="text-align:center;font-size:12.5px;font-weight:700;color:${tabColors.traning};margin-top:8px">🏆 Alla klara — +${amounts.bonus} XP bonus intjänad!</div>
-          <p style="margin-top:8px;margin-bottom:8px;text-align:center">Du kan starta nästa omgång direkt — men den nya har bara kvarvarande tid av veckan på sig, innan en helt ny utmaning slumpas på måndag som vanligt.</p>
+          <p style="margin-top:8px;margin-bottom:8px;text-align:center;font-size:12px;color:var(--muted)">Du kan starta nästa omgång direkt — men den nya har bara kvarvarande tid av veckan på sig, innan en helt ny utmaning slumpas på måndag som vanligt.</p>
           <button class="modal-btn secondary" id="startNextChallengeBtn" style="width:auto;padding:10px 18px;margin:0 auto;display:block">🔄 Starta nästa omgång nu</button>
         ` : ""}
         <button class="modal-btn secondary" id="openWeeklyChallengeSummaryBtn" style="width:auto;padding:8px 14px;margin:12px auto 0;display:block;font-size:12.5px">📊 Sammanfattning av veckoutmaningar</button>
@@ -5306,27 +5396,35 @@ function achievementsCardHTML() {
 
 function personalRecordsCardHTML() {
   const gymRows = pbExercises.filter((p) => p.enabled)
-    .map((p) => { const e = pbBestEntryFor(p.id); return e ? { label: p.label, best: e.value, date: e.date, isTime: false } : null; })
+    .map((p) => {
+      const e = pbBestEntryFor(p.id);
+      return e ? { label: p.label, best: e.value, date: e.date, isTime: false, unit: p.unit === "reps" ? "reps" : "kg", rankKind: "strength", rankKey: `strength|${p.id}`, rankArgs: [p.id] } : null;
+    })
     .filter(Boolean);
   const konditionTypesUsed = [...new Set(konditionPbLog.map((e) => e.type).filter(Boolean))];
   const konditionRows = konditionPbDistances.filter((d) => d.enabled).flatMap((d) =>
     konditionTypesUsed.map((type) => {
       const e = konditionPbBestEntryFor(d.id, type);
-      return e ? { label: `${d.label} (${typeMeta(type).label})`, best: e.minutes, date: e.date, isTime: true } : null;
+      return e ? { label: `${d.label} (${typeMeta(type).label})`, best: e.minutes, date: e.date, isTime: true, rankKind: "kondition", rankKey: `kondition|${d.id}|${type}`, rankArgs: [d.id, type] } : null;
     }).filter(Boolean)
   );
   const rows = [...gymRows, ...konditionRows].sort((a, b) => a.label.localeCompare(b.label, "sv"));
+  lastPbRows = rows;
   if (!pbExercises.some((p) => p.enabled) && !konditionPbDistances.some((d) => d.enabled)) return "";
+  const leaderboardOn = pbLeaderboardEnabled();
   return `
     <div class="card">
       ${cardChevronHeaderHTML("showPbCardToggle", "🏆 Personbästa", showPbCard, showPbCard ? "10px" : null)}
       ${showPbCard ? (rows.length === 0 ? `<div class="empty">Inga personbästa loggade än — kryssa i "Personbästa!" när du loggar ett gym- eller konditionspass.</div>` : `
-        ${rows.map((row) => `
+        ${rows.map((row, i) => `
           <div class="goal-row">
-            <span class="goal-label">${escapeHtml(row.label)}</span>
+            ${leaderboardOn
+              ? `<button data-open-pb-leaderboard-row="${i}" style="background:none;border:none;padding:0;font-family:inherit;text-align:left;cursor:pointer;color:${tabColors.stats};text-decoration:underline;font-size:14px;font-weight:600">${escapeHtml(row.label)}</button>`
+              : `<span class="goal-label">${escapeHtml(row.label)}</span>`}
             <span style="text-align:right">
-              <span class="goal-value">${row.isTime ? fmtMinSec(row.best) : row.best}</span>
+              <span class="goal-value">${row.isTime ? fmtMinSec(row.best) : `${row.best} ${row.unit || "kg"}`}</span>
               <div style="font-size:11px;color:var(--muted2)">${fmtDateShort(row.date)}</div>
+              ${leaderboardOn ? `<div id="pbRank-${i}" style="margin-top:2px">${pbRankBadgeHTML(row.rankKey)}</div>` : ""}
             </span>
           </div>
         `).join("")}
@@ -5336,8 +5434,184 @@ function personalRecordsCardHTML() {
     <div id="pbHistoryCardWrap">${pbHistoryCardHTML()}</div>
   `;
 }
+// Din egen rank/procent räknas mot alla som loggat en PB, oavsett din
+// Topplista-inställning - "Dold" styr bara om du syns i den namngivna
+// listan, inte om du får se din egen placering.
+function pbLeaderboardEnabled() {
+  return !!supabaseClient && !!authUser;
+}
+// Rank-badgen visar alltid din placering (oavsett hur bra/dålig den är) -
+// tryck på den för detaljer (X/Y totalt + procent) som toast.
+function pbRankBadgeHTML(rankKey) {
+  const cached = pbRankCache[rankKey];
+  if (cached === undefined) return `<span style="font-size:10px;color:var(--muted2)">···</span>`;
+  if (cached === null) return "";
+  const label = cached.rank === 1 ? "🥇 Nr 1" : `Nr ${cached.rank}`;
+  return `<button data-pb-rank-info="${escapeHtml(rankKey)}" style="background:none;border:none;padding:0;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;color:${tabColors.stats};text-decoration:underline">${label}</button>`;
+}
+function showPbRankInfoToast(cached) {
+  if (!cached) return;
+  if (cached.total <= 1) {
+    showInfoToast("🏆 Du är den enda som loggat det här personbästat ännu.");
+    return;
+  }
+  showInfoToast(`🏆 Du är ${cached.rank}/${cached.total} — bättre än ${cached.percentile}% av alla.`);
+}
+// Hämtar din placering för varje PB-rad från servern (via en säker
+// databasfunktion som bara ger tillbaka din egen rank + totalt antal
+// deltagare - aldrig andras data). Räknas mot alla som loggat övningen,
+// oavsett Topplista-inställning ("Dold" styr bara den namngivna listan
+// nedan). Körs efter varje omritning av kortet.
+async function loadPbRanks() {
+  if (!pbLeaderboardEnabled()) return;
+  const rows = lastPbRows || [];
+  await Promise.all(rows.map(async (row, i) => {
+    let result = null;
+    try {
+      const rpcName = row.rankKind === "strength" ? "get_strength_pb_rank" : "get_kondition_pb_rank";
+      const rpcArgs = row.rankKind === "strength"
+        ? { p_exercise_id: row.rankArgs[0], p_gender: leaderboardGenderFilter }
+        : { p_distance_id: row.rankArgs[0], p_type: row.rankArgs[1], p_gender: leaderboardGenderFilter };
+      const { data, error } = await supabaseClient.rpc(rpcName, rpcArgs);
+      if (error) throw error;
+      const r = Array.isArray(data) && data.length ? data[0] : null;
+      result = r && r.my_rank != null ? { rank: Number(r.my_rank), total: Number(r.total), percentile: Number(r.percentile) } : null;
+    } catch (e) {
+      result = null;
+    }
+    pbRankCache[row.rankKey] = result;
+    const el = document.getElementById(`pbRank-${i}`);
+    if (el) {
+      el.innerHTML = pbRankBadgeHTML(row.rankKey);
+      const btn = el.querySelector("[data-pb-rank-info]");
+      if (btn) btn.addEventListener("click", () => showPbRankInfoToast(pbRankCache[row.rankKey]));
+    }
+  }));
+}
+// Bara Mattias konto - styr om admin-verktygen (se alla + ta bort fuskade
+// PB) visas i topplistan. Ren UI-gate; själva borttagningsfunktionerna i
+// Supabase kollar auth.uid() mot samma id på riktigt, så det går inte att
+// komma runt genom att peta i klientkoden.
+const ADMIN_USER_ID = "3b74e3f7-45f0-4686-b304-c731045e73b2";
+let pbLeaderboardAdminMode = false;
+
+// Full topplista för en enskild övning/distans, öppnas genom att trycka på
+// övningens namn. Visar bara de som aktivt valt "Anonym" eller "Synlig" i
+// Profil > Topplista, i den storlek (topp X) och könsfilter man valt där.
+async function openPbLeaderboardModal(row) {
+  pushModalHistoryIfNeeded();
+  pbLeaderboardAdminMode = false;
+  const isAdmin = authUser && authUser.id === ADMIN_USER_ID;
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="pbLeaderboardOverlay">
+      <div class="modal-sheet">
+        <h2>🏆 Topplista</h2>
+        <div style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:2px">${escapeHtml(row.label)}</div>
+        <div id="pbLeaderboardSubtext" style="text-align:center;font-size:11px;color:var(--muted2);margin-bottom:10px"></div>
+        ${isAdmin ? `<button class="modal-btn secondary" id="pbLeaderboardAdminToggle" style="width:auto;margin:0 auto 10px;display:block;padding:6px 14px;font-size:12px">🛠 Adminvy (alla, inkl. dolda)</button>` : ""}
+        <div id="pbLeaderboardListWrap"><div class="empty">Hämtar…</div></div>
+        <div class="modal-close" id="pbLeaderboardCloseBtn">Stäng</div>
+      </div>
+    </div>
+  `;
+  document.getElementById("pbLeaderboardCloseBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; });
+  document.getElementById("pbLeaderboardOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "pbLeaderboardOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+  const adminToggleBtn = document.getElementById("pbLeaderboardAdminToggle");
+  if (adminToggleBtn) {
+    adminToggleBtn.addEventListener("click", () => {
+      pbLeaderboardAdminMode = !pbLeaderboardAdminMode;
+      adminToggleBtn.textContent = pbLeaderboardAdminMode ? "👥 Visa vanlig topplista" : "🛠 Adminvy (alla, inkl. dolda)";
+      renderPbLeaderboardList(row);
+    });
+  }
+  await renderPbLeaderboardList(row);
+}
+async function renderPbLeaderboardList(row) {
+  const listWrap = document.getElementById("pbLeaderboardListWrap");
+  const subtext = document.getElementById("pbLeaderboardSubtext");
+  if (!listWrap) return;
+  listWrap.innerHTML = `<div class="empty">Hämtar…</div>`;
+  const genderLabel = leaderboardGenderFilter === "man" ? "Män" : leaderboardGenderFilter === "kvinna" ? "Kvinnor" : "Alla";
+  if (subtext) {
+    subtext.textContent = pbLeaderboardAdminMode
+      ? "Adminvy: alla som loggat, oavsett Topplista-inställning"
+      : `Topp ${leaderboardSize} · ${genderLabel} · bara de som valt Anonym eller Synlig i Profil`;
+  }
+  try {
+    if (pbLeaderboardAdminMode) {
+      const rpcName = row.rankKind === "strength" ? "admin_get_strength_leaderboard" : "admin_get_kondition_leaderboard";
+      const rpcArgs = row.rankKind === "strength"
+        ? { p_exercise_id: row.rankArgs[0], p_limit: 50 }
+        : { p_distance_id: row.rankArgs[0], p_type: row.rankArgs[1], p_limit: 50 };
+      const { data, error } = await supabaseClient.rpc(rpcName, rpcArgs);
+      if (error) throw error;
+      const list = Array.isArray(data) ? data : [];
+      if (!list.length) { listWrap.innerHTML = `<div class="empty">Ingen data ännu.</div>`; return; }
+      listWrap.innerHTML = list.map((r, idx) => `
+        <div class="list-row">
+          <span style="font-size:13px;font-weight:700;min-width:24px">#${idx + 1}</span>
+          <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.email || "?")} <span style="color:var(--muted2)">(${escapeHtml(r.visibility)})</span></span>
+          <span style="font-size:14px;font-weight:600">${row.isTime ? fmtMinSec(Number(r.value)) : `${Number(r.value)} ${row.unit || "kg"}`}</span>
+          <button class="delete-btn" data-admin-delete-pb="${escapeHtml(r.user_id)}" data-armed="false" style="padding:4px">${ICONS.trash}</button>
+        </div>
+      `).join("");
+      listWrap.querySelectorAll("[data-admin-delete-pb]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (btn.dataset.armed !== "true") {
+            btn.dataset.armed = "true";
+            btn.style.background = "#E8834A";
+            btn.style.color = "#fff";
+            btn.title = "Tryck igen för att bekräfta borttagning";
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const delRpcName = row.rankKind === "strength" ? "admin_delete_strength_pb" : "admin_delete_kondition_pb";
+            const delArgs = row.rankKind === "strength"
+              ? { p_user_id: btn.dataset.adminDeletePb, p_exercise_id: row.rankArgs[0] }
+              : { p_user_id: btn.dataset.adminDeletePb, p_distance_id: row.rankArgs[0], p_type: row.rankArgs[1] };
+            const { error: delError } = await supabaseClient.rpc(delRpcName, delArgs);
+            if (delError) throw delError;
+            pbRankCache = {};
+            await renderPbLeaderboardList(row);
+            loadPbRanks();
+          } catch (e) {
+            showInfoToast("Kunde inte ta bort - försök igen.");
+            btn.disabled = false;
+          }
+        });
+      });
+      return;
+    }
+    const rpcName = row.rankKind === "strength" ? "get_strength_leaderboard" : "get_kondition_leaderboard";
+    const rpcArgs = row.rankKind === "strength"
+      ? { p_exercise_id: row.rankArgs[0], p_gender: leaderboardGenderFilter, p_limit: leaderboardSize }
+      : { p_distance_id: row.rankArgs[0], p_type: row.rankArgs[1], p_gender: leaderboardGenderFilter, p_limit: leaderboardSize };
+    const { data, error } = await supabaseClient.rpc(rpcName, rpcArgs);
+    if (error) throw error;
+    const list = Array.isArray(data) ? data : [];
+    if (!list.length) {
+      listWrap.innerHTML = `<div class="empty">Ingen data ännu.</div>`;
+      return;
+    }
+    listWrap.innerHTML = list.map((r) => `
+      <div class="list-row" style="${r.is_me ? `background:${tabColors.stats}22;border-radius:8px` : ""}">
+        <span style="font-size:13px;font-weight:700;min-width:28px">#${r.rnk}</span>
+        <span style="font-size:13px;flex:1">${r.display_name ? escapeHtml(r.display_name) : "Anonym"}${r.is_me ? " (du)" : ""}</span>
+        <span style="font-size:14px;font-weight:600">${row.isTime ? fmtMinSec(Number(r.value)) : `${Number(r.value)} ${row.unit || "kg"}`}</span>
+      </div>
+    `).join("");
+  } catch (e) {
+    listWrap.innerHTML = `<div class="status-msg err" style="display:block">Kunde inte hämta topplistan.</div>`;
+  }
+}
 function pbHistoryCardHTML() {
-  const gymEntries = pbLog.map((e) => ({ ...e, label: (pbExercises.find((p) => p.id === e.exerciseId) || {}).label || "?", display: String(e.value), isKondition: false }));
+  const gymEntries = pbLog.map((e) => {
+    const exDef = pbExercises.find((p) => p.id === e.exerciseId) || {};
+    return { ...e, label: exDef.label || "?", display: `${e.value} ${exDef.unit === "reps" ? "reps" : "kg"}`, isKondition: false };
+  });
   const konditionEntries = konditionPbLog.map((e) => {
     const distLabel = (konditionPbDistances.find((d) => d.id === e.distanceId) || {}).label || "?";
     const typeLabel = e.type ? ` (${typeMeta(e.type).label})` : "";
@@ -5368,6 +5642,7 @@ function renderPersonalRecordsCard() {
   if (!wrap) return;
   wrap.innerHTML = personalRecordsCardHTML();
   wirePersonalRecordsCardEvents();
+  loadPbRanks();
 }
 function renderPbHistoryCard() {
   const wrap = document.getElementById("pbHistoryCardWrap");
@@ -5394,6 +5669,7 @@ function wirePbHistoryCardEvents() {
         pbLog = pbLog.filter((e) => e.id !== btn.dataset.delPb);
         persistPbLog();
       }
+      pbRankCache = {};
       renderPbHistoryCard();
       renderPersonalRecordsCard();
     });
@@ -5408,6 +5684,12 @@ function wirePersonalRecordsCardEvents() {
       renderPersonalRecordsCard();
     });
   }
+  document.querySelectorAll("[data-open-pb-leaderboard-row]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = lastPbRows[parseInt(btn.dataset.openPbLeaderboardRow, 10)];
+      if (row) openPbLeaderboardModal(row);
+    });
+  });
   wirePbHistoryCardEvents();
 }
 
@@ -5848,13 +6130,15 @@ function renderTraning() {
         ${pbFormOpenExerciseId ? (() => {
           const ex = pbExercises.find((p) => p.id === pbFormOpenExerciseId);
           const best = pbBestFor(pbFormOpenExerciseId);
+          const isReps = ex.unit === "reps";
           return `
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
               <input type="date" id="pbDateInput" value="${workoutFormState.date || todayISO()}" style="flex-shrink:0" />
-              <input type="number" inputmode="decimal" step="0.5" placeholder="${ex.label} — nytt PB" id="pbValueInput" style="flex:1;min-width:0" />
+              <input type="number" inputmode="${isReps ? "numeric" : "decimal"}" step="${isReps ? "1" : "0.5"}" placeholder="${ex.label} — ${isReps ? "antal reps" : "nytt PB (kg)"}" id="pbValueInput" style="flex:1;min-width:0" />
               <button class="modal-btn primary" id="pbSaveBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Spara</button>
             </div>
-            ${best !== null ? `<p style="margin-top:4px">Nuvarande PB: <strong>${best}</strong></p>` : ""}
+            <div id="pbValueError" class="status-msg err" style="display:none;margin-top:6px"></div>
+            ${best !== null ? `<p style="margin-top:4px">Nuvarande PB: <strong>${best} ${isReps ? "reps" : "kg"}</strong></p>` : ""}
           `;
         })() : ""}
       ` : ""}
@@ -5883,6 +6167,7 @@ function renderTraning() {
               <input type="number" inputmode="decimal" step="0.1" placeholder="${dist.label} — tid (min)" id="konditionPbValueInput" style="flex:1;min-width:0" />
               <button class="modal-btn primary" id="konditionPbSaveBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Spara</button>
             </div>
+            <div id="konditionPbValueError" class="status-msg err" style="display:none;margin-top:6px"></div>
             ${best !== null ? `<p style="margin-top:4px">Nuvarande PB (${escapeHtml(typeMeta(workoutFormState.type).label)}): <strong>${fmtMinSec(best)}</strong></p>` : ""}
           `;
         })() : ""}
@@ -5903,6 +6188,7 @@ function renderTraning() {
   });
   wireSenastePassenCardEvents();
   wirePersonalRecordsCardEvents();
+  loadPbRanks();
 
   content.querySelectorAll("[data-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -6006,10 +6292,26 @@ function renderTraning() {
     pbSaveBtn.addEventListener("click", () => {
       const input = document.getElementById("pbValueInput");
       const dateInput = document.getElementById("pbDateInput");
+      const errorEl = document.getElementById("pbValueError");
       const num = parseFloat(String(input.value).replace(",", "."));
       if (isNaN(num) || num <= 0) { input.focus(); return; }
+      const cap = PB_EXERCISE_CAPS[pbFormOpenExerciseId];
+      if (cap && num > cap) {
+        const exDef = pbExercises.find((p) => p.id === pbFormOpenExerciseId);
+        const isReps = exDef && exDef.unit === "reps";
+        if (errorEl) {
+          errorEl.style.display = "block";
+          errorEl.textContent = isReps
+            ? `Klarar du verkligen fler än ${cap} reps? 😮 Skicka gärna bevis (bild/video) till ${PB_CAP_CONTACT_EMAIL} så lägger jag in det manuellt!`
+            : `Är du så stark? 😮 Skicka gärna bevis (bild/video) till ${PB_CAP_CONTACT_EMAIL} så lägger jag in det manuellt!`;
+        }
+        input.focus();
+        return;
+      }
+      if (errorEl) errorEl.style.display = "none";
       pbLog.push({ id: uid(), date: (dateInput && dateInput.value) || workoutFormState.date || todayISO(), exerciseId: pbFormOpenExerciseId, value: num });
       persistPbLog();
+      pbRankCache = {};
       vibrate();
       pbFormOpenExerciseId = null;
       renderTraning();
@@ -6035,10 +6337,22 @@ function renderTraning() {
     konditionPbSaveBtn.addEventListener("click", () => {
       const input = document.getElementById("konditionPbValueInput");
       const dateInput = document.getElementById("konditionPbDateInput");
+      const errorEl = document.getElementById("konditionPbValueError");
       const num = parseFloat(String(input.value).replace(",", "."));
       if (isNaN(num) || num <= 0) { input.focus(); return; }
+      const floor = (KONDITION_PB_MIN_MINUTES[konditionPbFormOpenId] || {})[workoutFormState.type];
+      if (floor && num < floor) {
+        if (errorEl) {
+          errorEl.style.display = "block";
+          errorEl.textContent = `Är du så snabb? 😮 Skicka gärna bevis (t.ex. länk till aktivitet) till ${PB_CAP_CONTACT_EMAIL} så lägger jag in det manuellt!`;
+        }
+        input.focus();
+        return;
+      }
+      if (errorEl) errorEl.style.display = "none";
       konditionPbLog.push({ id: uid(), date: (dateInput && dateInput.value) || workoutFormState.date || todayISO(), distanceId: konditionPbFormOpenId, type: workoutFormState.type, minutes: num });
       persistKonditionPbLog();
+      pbRankCache = {};
       vibrate();
       konditionPbFormOpenId = null;
       renderTraning();
@@ -7790,6 +8104,8 @@ function buildSettingsPayload() {
     showCalorieStats,
     showSubmissionStats,
     weightChartPeriod,
+    leaderboardSize,
+    leaderboardGenderFilter,
     activityLevel: calorieState.activity,
     unlockedAchievements,
     unlockedAchievementDates,
@@ -8657,7 +8973,7 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.konditionMenuEnabled === "boolean") { konditionMenuEnabled = remote.konditionMenuEnabled; saveKonditionMenuEnabled(); }
     if (Array.isArray(remote.gymSplits) && remote.gymSplits.length) { gymSplits = remote.gymSplits; saveGymSplits(); }
     if (typeof remote.submissionsMenuEnabled === "boolean") { submissionsMenuEnabled = remote.submissionsMenuEnabled; saveSubmissionsMenuEnabled(); }
-    if (Array.isArray(remote.submissionTypes) && remote.submissionTypes.length) { submissionTypes = remote.submissionTypes; saveSubmissionTypes(); }
+    if (Array.isArray(remote.submissionTypes) && remote.submissionTypes.length) { submissionTypes = migrateSubmissionTypesList(remote.submissionTypes); saveSubmissionTypes(); }
     if (remote.themeMode === "dark" || remote.themeMode === "light") { themeMode = remote.themeMode; saveThemeMode(); applyTheme(); }
     if (remote.bgAccentHex === null || typeof remote.bgAccentHex === "string") { bgAccentHex = remote.bgAccentHex; saveBgAccentHex(); applyBgTint(); }
     if (remote.levelTheme === "belt" || remote.levelTheme === "fitness" || remote.levelTheme === "gym" || remote.levelTheme === "run") { levelTheme = remote.levelTheme; saveLevelTheme(); }
@@ -8668,7 +8984,7 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.beltBadgeFrameEnabled === "boolean") { beltBadgeFrameEnabled = remote.beltBadgeFrameEnabled; saveBeltBadgeFrameEnabled(); }
     if (typeof remote.bodyMeasurementsEnabled === "boolean") { bodyMeasurementsEnabled = remote.bodyMeasurementsEnabled; saveBodyMeasurementsEnabled(); }
     if (Array.isArray(remote.bodyMeasurementTypes) && remote.bodyMeasurementTypes.length) { bodyMeasurementTypes = remote.bodyMeasurementTypes; saveBodyMeasurementTypes(); }
-    if (Array.isArray(remote.pbExercises) && remote.pbExercises.length) { pbExercises = remote.pbExercises; savePbExercises(); }
+    if (Array.isArray(remote.pbExercises) && remote.pbExercises.length) { pbExercises = migratePbExercisesList(remote.pbExercises); savePbExercises(); }
     if (remote.gymExercises && typeof remote.gymExercises === "object") { gymExercises = remote.gymExercises; saveGymExercises(); }
     if (typeof remote.submissionBingoEnabled === "boolean") { submissionBingoEnabled = remote.submissionBingoEnabled; saveSubmissionBingoEnabled(); }
     if (typeof remote.kampsportAdvancedSectionOpen === "boolean") { kampsportAdvancedSectionOpen = remote.kampsportAdvancedSectionOpen; saveKampsportAdvancedSectionOpen(); }
@@ -8697,6 +9013,8 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.hapticsEnabled === "boolean") { hapticsEnabled = remote.hapticsEnabled; saveHaptics(); }
     if (typeof remote.soundEffectsEnabled === "boolean") { soundEffectsEnabled = remote.soundEffectsEnabled; saveSoundEffects(); }
     if (remote.calorieGoal === "lose" || remote.calorieGoal === "maintain" || remote.calorieGoal === "gain") { calorieGoal = remote.calorieGoal; saveCalorieGoal(); }
+    if ([10, 15, 20, 30, 50].includes(remote.leaderboardSize)) { leaderboardSize = remote.leaderboardSize; saveLeaderboardSize(); }
+    if (remote.leaderboardGenderFilter === "all" || remote.leaderboardGenderFilter === "man" || remote.leaderboardGenderFilter === "kvinna") { leaderboardGenderFilter = remote.leaderboardGenderFilter; saveLeaderboardGenderFilter(); }
     if (typeof remote.showCalorieStats === "boolean") { showCalorieStats = remote.showCalorieStats; saveShowCalorieStats(); }
     if (typeof remote.showSubmissionStats === "boolean") { showSubmissionStats = remote.showSubmissionStats; saveShowSubmissionStats(); }
     if (typeof remote.weightChartPeriod === "string") { weightChartPeriod = remote.weightChartPeriod; saveWeightChartPeriod(); }
@@ -9017,6 +9335,22 @@ async function pullAndMergeFoodFavoritesFromCloud() {
   }
 }
 
+async function pushLeaderboardVisibilityToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { error } = await supabaseClient.from("leaderboard_settings")
+    .upsert({ user_id: authUser.id, visibility: leaderboardVisibility, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+async function pullAndMergeLeaderboardVisibilityFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("leaderboard_settings").select("visibility").eq("user_id", authUser.id).maybeSingle();
+  if (error) throw error;
+  if (data && data.visibility) {
+    leaderboardVisibility = data.visibility;
+    saveLeaderboardVisibility();
+  }
+}
+
 async function pushStateToCloud() {
   if (!supabaseClient || !authUser) return;
   if (cloudSyncInFlight) { cloudSyncQueuedWhileInFlight = true; return; }
@@ -9038,6 +9372,7 @@ async function pushStateToCloud() {
     await pushWeeklyChallengeHistoryToCloud();
     await pushSavedMealsToCloud();
     await pushFoodFavoritesToCloud();
+    await pushLeaderboardVisibilityToCloud();
     cloudSyncStatus = "idle";
     cloudSyncErrorMsg = "";
   } catch (e) {
@@ -9085,6 +9420,8 @@ async function pullAndMergeFromCloud() {
     await pullAndMergeWeeklyChallengeHistoryFromCloud();
     await pullAndMergeSavedMealsFromCloud();
     await pullAndMergeFoodFavoritesFromCloud();
+    await pullAndMergeLeaderboardVisibilityFromCloud();
+    pbRankCache = {};
     await pushStateToCloud();
   } catch (e) {
     cloudSyncStatus = "error";
@@ -9135,18 +9472,40 @@ let lastPulledUserId = null;
 // nytt lösenord, istället för det vanliga inloggningsläget.
 let authRecoveryMode = false;
 
+// Molndatan (XP/prestationer/allt annat) hämtas och slås ihop asynkront i
+// bakgrunden efter inloggning (pullAndMergeFromCloud) - den är INTE klar när
+// modalen/huvudvyn först renderas om direkt efter inloggning. Utan den här
+// uppföljningen visade appen fel level (t.ex. "Level 1" tills riktig XP
+// hunnit slås ihop) tills man råkade byta flik eller öppna om en vy manuellt.
+function refreshAfterCloudPull() {
+  render();
+  if (document.getElementById("openProfileBtn")) {
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    const scrollTop = sheet ? sheet.scrollTop : 0;
+    openBackupModal();
+    const newSheet = modalRoot.querySelector(".modal-sheet");
+    if (newSheet) newSheet.scrollTop = scrollTop;
+  } else if (document.getElementById("profileName")) {
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    const scrollTop = sheet ? sheet.scrollTop : 0;
+    openProfileModal();
+    const newSheet = modalRoot.querySelector(".modal-sheet");
+    if (newSheet) newSheet.scrollTop = scrollTop;
+  }
+}
+
 function initCloudAuth() {
   if (!supabaseClient) return;
   supabaseClient.auth.onAuthStateChange((event, session) => {
     authUser = session && session.user ? { id: session.user.id, email: session.user.email } : null;
     if (event === "PASSWORD_RECOVERY") {
       authRecoveryMode = true;
-      accountSectionOpen = true;
-      openBackupModal();
+      profilePasswordSectionOpen = true;
+      openProfileModal();
     }
     if (event === "SIGNED_IN" && authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud();
+      pullAndMergeFromCloud().then(refreshAfterCloudPull);
     }
     if (event === "SIGNED_OUT") {
       cloudSyncStatus = "offline";
@@ -9159,7 +9518,7 @@ function initCloudAuth() {
     authUser = data && data.session && data.session.user ? { id: data.session.user.id, email: data.session.user.email } : null;
     if (authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud();
+      pullAndMergeFromCloud().then(refreshAfterCloudPull);
     }
     render();
   });
@@ -9489,24 +9848,69 @@ function openKampsportWelcomeBackModal(result) {
   });
 }
 
+// Kontostatus-kortet högst upp i Inställningar - visar inloggningsstatus
+// (med inloggnings-/registreringsformulär) om utloggad, eller namn/e-post/
+// level+XP om inloggad. Utloggning och byt lösenord bor i Profil-vyn
+// istället (öppnas via "Redigera profil"), för att hålla den här ytan kort.
+function accountStatusCardHTML() {
+  const avatarFallback = `<div style="width:44px;height:44px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><span class="icon-20">${ICONS.userCircle}</span></div>`;
+  const inputStyle = "width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit";
+
+  const editProfileBtn = `<button class="modal-btn secondary" id="openProfileBtn" style="width:auto;padding:6px 14px;font-size:12.5px;align-self:flex-start;display:flex;align-items:center;gap:6px">${ICONS.userCircle} Redigera profil</button>`;
+
+  if (!authUser) {
+    return `
+      <div class="card" style="display:flex;align-items:center;gap:12px;text-align:left">
+        ${avatarFallback}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700">Inte inloggad</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Logga in för att säkerhetskopiera dina framsteg och inställningar.</div>
+        </div>
+      </div>
+      ${editProfileBtn}
+      ${!supabaseClient ? `
+        <div class="status-msg err" style="display:block;margin-top:8px">Molnfunktionen kunde inte laddas (ingen uppkoppling till Supabase-biblioteket). Kontrollera din internetanslutning.</div>
+      ` : `
+        <div class="theme-row" style="margin-top:8px">
+          <button class="theme-btn" data-auth-mode="login" style="${authFormMode === "login" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Logga in</button>
+          <button class="theme-btn" data-auth-mode="signup" style="${authFormMode === "signup" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Skapa konto</button>
+        </div>
+        <input type="text" id="authEmailInput" placeholder="E-post" autocomplete="email" inputmode="email" style="${inputStyle}" />
+        <input type="password" id="authPasswordInput" placeholder="Lösenord (minst 6 tecken)" autocomplete="${authFormMode === "signup" ? "new-password" : "current-password"}" style="${inputStyle}" />
+        <button class="modal-btn primary" id="authSubmitBtn" ${authFormBusy ? "disabled" : ""}>${authFormMode === "signup" ? "Skapa konto" : "Logga in"}</button>
+        ${authFormMode === "login" ? `<button class="modal-close" id="forgotPasswordBtn" style="padding:2px">Glömt lösenord?</button>` : ""}
+        <div id="accountStatus" class="status-msg ${authFormError.startsWith("Om kontot finns") || authFormError.startsWith("Konto skapat") ? "ok" : "err"}" style="display:${authFormError ? "block" : "none"}">${escapeHtml(authFormError)}</div>
+      `}
+    `;
+  }
+
+  const info = computeLevelInfo(totalXp());
+  return `
+    <div class="card" style="display:flex;align-items:center;gap:12px;text-align:left;position:relative">
+      <div style="position:absolute;top:10px;right:14px;font-size:10px;color:var(--muted);text-align:right;max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="cloudSyncStatusText">${cloudSyncStatusLabel()}</div>
+      ${profileAvatarHTML(44, 3) || avatarFallback}
+      <div style="flex:1;min-width:0">
+        <button id="openProfileBtn" style="background:none;border:none;padding:0;font-family:inherit;cursor:pointer;font-size:14px;font-weight:700;color:${tabColors.stats};text-decoration:underline;text-align:left">${profile.name ? escapeHtml(profile.name) : "Namnlös profil"}</button>
+        <div style="font-size:12px;font-weight:600;color:${tabColors.stats};margin-top:2px">Level ${info.level} • ${totalXp().toLocaleString("sv-SE")} XP</div>
+      </div>
+    </div>
+  `;
+}
+
 function openBackupModal() {
   pushModalHistoryIfNeeded();
   applyAccentVar();
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal-sheet">
-        <h2>Inställningar</h2>
-        <button class="modal-btn secondary" id="openProfileBtn" style="display:flex;align-items:center;justify-content:center;gap:8px">${ICONS.userCircle} Redigera profil</button>
+        ${accountStatusCardHTML()}
 
+        <h2>Inställningar</h2>
+        <button class="modal-btn secondary" id="openOnboardingGuideBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">✨ Kör inställningsguiden</button>
         <h2 style="margin-top:6px">Utseende</h2>
         <div class="theme-row">
           <button class="theme-btn" data-theme-btn="dark" style="${themeMode === "dark" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🌙 Mörkt</button>
           <button class="theme-btn" data-theme-btn="light" style="${themeMode === "light" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">☀️ Ljust</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-          <span style="font-size:14px;font-weight:600;flex:1">Bakgrundston</span>
-          <input type="color" id="bgAccentColorInput" value="${bgAccentHex || (themeMode === "light" ? "#F4F5F7" : "#0F1115")}" style="width:36px;height:36px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
-          ${bgAccentHex ? `<button class="modal-btn secondary" id="bgAccentResetBtn" style="width:auto;padding:8px 12px">Återställ</button>` : ""}
         </div>
         <h2 style="margin-top:6px">Tema</h2>
         <div class="theme-row">
@@ -9517,7 +9921,11 @@ function openBackupModal() {
           <button class="theme-btn" data-level-theme-btn="gym" style="${levelTheme === "gym" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🏋️ Styrkelyft</button>
           <button class="theme-btn" data-level-theme-btn="run" style="${levelTheme === "run" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🏃 Löpare</button>
         </div>
-        <button class="modal-btn secondary" id="openOnboardingGuideBtn" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px">✨ Kör inställningsguiden</button>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <span style="font-size:14px;font-weight:600;flex:1">Bakgrundston</span>
+          <input type="color" id="bgAccentColorInput" value="${bgAccentHex || (themeMode === "light" ? "#F4F5F7" : "#0F1115")}" style="width:36px;height:36px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg);padding:2px;cursor:pointer" />
+          ${bgAccentHex ? `<button class="modal-btn secondary" id="bgAccentResetBtn" style="width:auto;padding:8px 12px">Återställ</button>` : ""}
+        </div>
         <div style="position:relative;margin-top:4px">
           <input type="text" id="settingsSearchInput" placeholder="🔍 Sök i inställningar..." style="width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit" />
           <div id="settingsSearchResults" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--card-bg);border:1px solid var(--border2);border-radius:10px;z-index:20;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
@@ -9748,38 +10156,6 @@ function openBackupModal() {
           <div id="modalStatus" class="status-msg" style="display:none"></div>
         </div>
 
-        <div class="toggle-row">
-          <span style="font-size:14px;font-weight:600">Konto &amp; molnsynk</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="accountMenuToggle" ${accountSectionOpen ? "checked" : ""} />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <p style="margin-top:-4px">Logga in för att synka din data mellan enheter. Appen fungerar offline precis som vanligt även när du är inloggad.</p>
-        <div id="accountBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${accountSectionOpen ? "" : "display:none"}">
-          ${!supabaseClient ? `
-            <div class="status-msg err" style="display:block">Molnfunktionen kunde inte laddas (ingen uppkoppling till Supabase-biblioteket). Kontrollera din internetanslutning.</div>
-          ` : authUser ? `
-            ${authRecoveryMode ? `<div class="status-msg ok" style="display:block">Du klickade på en återställningslänk. Sätt ditt nya lösenord nedan.</div>` : ""}
-            <div style="font-size:13px"><b>Inloggad som:</b> ${escapeHtml(authUser.email || "")}</div>
-            <div style="font-size:12px;color:var(--muted)" id="cloudSyncStatusText">${cloudSyncStatusLabel()}</div>
-            ${authRecoveryMode ? "" : `<button class="modal-btn secondary" id="logoutBtn">Logga ut</button>`}
-            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px">${authRecoveryMode ? "Sätt nytt lösenord" : "Byt lösenord"}</div>
-            <input type="password" id="newPasswordInput" placeholder="Nytt lösenord (minst 6 tecken)" autocomplete="new-password" style="width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit" />
-            <button class="modal-btn primary" id="changePasswordBtn">${authRecoveryMode ? "Spara nytt lösenord" : "Byt lösenord"}</button>
-            <div id="accountStatus" class="status-msg ${authFormError ? "err" : "ok"}" style="display:${authFormError ? "block" : "none"}">${escapeHtml(authFormError)}</div>
-          ` : `
-            <div class="theme-row">
-              <button class="theme-btn" data-auth-mode="login" style="${authFormMode === "login" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Logga in</button>
-              <button class="theme-btn" data-auth-mode="signup" style="${authFormMode === "signup" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Skapa konto</button>
-            </div>
-            <input type="text" id="authEmailInput" placeholder="E-post" autocomplete="email" inputmode="email" style="width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit" />
-            <input type="password" id="authPasswordInput" placeholder="Lösenord (minst 6 tecken)" autocomplete="${authFormMode === "signup" ? "new-password" : "current-password"}" style="width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit" />
-            <button class="modal-btn primary" id="authSubmitBtn" ${authFormBusy ? "disabled" : ""}>${authFormMode === "signup" ? "Skapa konto" : "Logga in"}</button>
-            ${authFormMode === "login" ? `<button class="modal-close" id="forgotPasswordBtn" style="padding:2px">Glömt lösenord?</button>` : ""}
-            <div id="accountStatus" class="status-msg ${authFormError.startsWith("Om kontot finns") || authFormError.startsWith("Konto skapat") ? "ok" : "err"}" style="display:${authFormError ? "block" : "none"}">${escapeHtml(authFormError)}</div>
-          `}
-        </div>
         <button class="modal-btn secondary" id="openAboutBtn" style="margin-top:6px">ℹ️ Om Workout Tracker</button>
 
         <div class="toggle-row">
@@ -10041,10 +10417,6 @@ function openBackupModal() {
     backupSectionOpen = e.target.checked;
     document.getElementById("backupBody").style.display = backupSectionOpen ? "flex" : "none";
   });
-  document.getElementById("accountMenuToggle").addEventListener("change", (e) => {
-    accountSectionOpen = e.target.checked;
-    document.getElementById("accountBody").style.display = accountSectionOpen ? "flex" : "none";
-  });
   const reopenAccountSection = () => {
     const sheet = modalRoot.querySelector(".modal-sheet");
     const scrollTop = sheet ? sheet.scrollTop : 0;
@@ -10085,32 +10457,6 @@ function openBackupModal() {
         authFormBusy = false;
         reopenAccountSection();
       }
-    });
-  }
-  const logoutBtn = document.getElementById("logoutBtn");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-      await authSignOut();
-      reopenAccountSection();
-    });
-  }
-  const changePasswordBtn = document.getElementById("changePasswordBtn");
-  if (changePasswordBtn) {
-    changePasswordBtn.addEventListener("click", async () => {
-      const newPassword = document.getElementById("newPasswordInput").value || "";
-      if (newPassword.length < 6) {
-        authFormError = "Lösenordet måste vara minst 6 tecken.";
-        reopenAccountSection();
-        return;
-      }
-      try {
-        await authChangePassword(newPassword);
-        authFormError = authRecoveryMode ? "Klart! Ditt nya lösenord är sparat." : "Lösenord ändrat.";
-        authRecoveryMode = false;
-      } catch (err) {
-        authFormError = (err && err.message) || "Kunde inte byta lösenord.";
-      }
-      reopenAccountSection();
     });
   }
   const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
@@ -10727,6 +11073,10 @@ function renderPbExercisesList() {
     html += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px">` + pbExercises.map((p, i) => `
       <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px 10px">
         <input type="text" data-pbe-label="${i}" value="${escapeHtml(p.label)}" style="flex:1;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;padding:2px;min-width:0" />
+        <select data-pbe-unit="${i}" ${p.id === "pullup" ? "disabled" : ""} style="background:var(--input-bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px 4px;flex-shrink:0${p.id === "pullup" ? ";opacity:.6" : ""}">
+          <option value="kg" ${p.unit === "kg" ? "selected" : ""}>kg</option>
+          <option value="reps" ${p.unit === "reps" ? "selected" : ""}>reps</option>
+        </select>
         <label class="toggle-switch">
           <input type="checkbox" data-pbe-enabled="${i}" ${p.enabled ? "checked" : ""} />
           <span class="toggle-slider"></span>
@@ -10755,6 +11105,13 @@ function renderPbExercisesList() {
       savePbExercises();
     });
   });
+  list.querySelectorAll("[data-pbe-unit]").forEach((select) => {
+    select.addEventListener("change", (e) => {
+      pbExercises[parseInt(select.dataset.pbeUnit, 10)].unit = e.target.value;
+      savePbExercises();
+      renderPersonalRecordsCard();
+    });
+  });
   list.querySelectorAll("[data-pbe-remove]").forEach((btn) => {
     btn.addEventListener("click", () => {
       pbExercises.splice(parseInt(btn.dataset.pbeRemove, 10), 1);
@@ -10768,7 +11125,7 @@ function renderPbExercisesList() {
       const input = document.getElementById("newPbExerciseLabel");
       const label = input.value.trim();
       if (!label) { input.focus(); return; }
-      pbExercises.push({ id: uid(), label, enabled: true });
+      pbExercises.push({ id: uid(), label, enabled: true, unit: "kg" });
       savePbExercises();
       renderPbExercisesList();
     });
@@ -11310,6 +11667,7 @@ function openAboutModal() {
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="aboutModalOverlay">
       <div class="modal-sheet">
+        <button id="aboutModalBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
         <div style="text-align:center;padding:8px 0">
           <img src="${APP_ICON_IMG}" alt="Workout Tracker" style="width:64px;height:64px;border-radius:16px" />
           <div style="font-size:19px;font-weight:700;margin-top:8px">Workout Tracker</div>
@@ -11340,11 +11698,13 @@ function openAboutModal() {
       </div>
     </div>
   `;
-  document.getElementById("aboutModalCloseBtn").addEventListener("click", () => {
+  const closeAboutModal = () => {
     openBackupModal();
     const sheet = modalRoot.querySelector(".modal-sheet");
     if (sheet) sheet.scrollTop = aboutModalReturnScrollTop;
-  });
+  };
+  document.getElementById("aboutModalCloseBtn").addEventListener("click", closeAboutModal);
+  document.getElementById("aboutModalBackBtn").addEventListener("click", closeAboutModal);
   document.getElementById("aboutModalOverlay").addEventListener("click", (e) => {
     if (e.target.id === "aboutModalOverlay") {
       openBackupModal();
@@ -11385,7 +11745,10 @@ function openProfileModal() {
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="profileModalOverlay">
       <div class="modal-sheet">
-        <h2>Profil</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button id="profileModalBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
+          <h2>Profil</h2>
+        </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px">
           <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
             || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
@@ -11395,6 +11758,43 @@ function openProfileModal() {
           </div>
           <input type="file" id="profileAvatarFileInput" accept="image/*" style="display:none" />
         </div>
+        ${authUser ? `
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          <div style="text-align:center;font-size:12px;color:var(--muted)">${escapeHtml(authUser.email || "")}</div>
+          ${authRecoveryMode ? `<div class="status-msg ok" style="display:block">Du klickade på en återställningslänk. Sätt ditt nya lösenord nedan.</div>` : ""}
+          ${cardChevronHeaderHTML("profilePasswordToggle", authRecoveryMode ? "Sätt nytt lösenord" : "Byt lösenord/Logga ut", profilePasswordSectionOpen)}
+          ${profilePasswordSectionOpen ? `
+            <input type="password" id="newPasswordInput" placeholder="Nytt lösenord (minst 6 tecken)" autocomplete="new-password" style="width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit" />
+            <button class="modal-btn primary" id="changePasswordBtn">${authRecoveryMode ? "Spara nytt lösenord" : "Byt lösenord"}</button>
+            <div id="accountStatus" class="status-msg ${authFormError ? "err" : "ok"}" style="display:${authFormError ? "block" : "none"}">${escapeHtml(authFormError)}</div>
+            ${authRecoveryMode ? "" : `<button class="modal-btn secondary" id="logoutBtn" style="width:auto;padding:6px 14px;font-size:12.5px;align-self:center;margin-top:4px">Logga ut</button>`}
+          ` : ""}
+        </div>
+        <div style="margin-bottom:14px">
+          ${cardChevronHeaderHTML("leaderboardSettingsToggle", "Topplista", leaderboardSettingsSectionOpen)}
+          ${leaderboardSettingsSectionOpen ? `
+            <p style="margin-top:6px;font-size:12px;color:var(--muted);text-align:center">Din placering (t.ex. "bättre än 73%") räknas alltid mot alla som loggat samma personbästa. Det här styr bara om du syns i den namngivna topplistan.</p>
+            <div class="theme-row" style="margin-top:8px">
+              <button class="theme-btn" data-leaderboard-visibility="hidden" style="${leaderboardVisibility === "hidden" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🙈 Dold</button>
+              <button class="theme-btn" data-leaderboard-visibility="anonymous" style="${leaderboardVisibility === "anonymous" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🎭 Anonym</button>
+              <button class="theme-btn" data-leaderboard-visibility="visible" style="${leaderboardVisibility === "visible" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">👤 Synlig</button>
+            </div>
+            <p style="margin-top:8px;font-size:11px;color:var(--muted2);text-align:center">
+              ${leaderboardVisibility === "hidden" ? "Du syns inte i topplistan för andra." : leaderboardVisibility === "anonymous" ? "Du syns i topplistan, men utan namn." : "Du syns i topplistan med ditt profilnamn."}
+            </p>
+            <div style="margin-top:14px;font-size:13px;font-weight:600;text-align:center">Antal på topplistan</div>
+            <div class="theme-row" style="margin-top:6px">
+              ${[10, 15, 20, 30, 50].map((n) => `<button class="theme-btn" data-leaderboard-size="${n}" style="padding:8px 0;${leaderboardSize === n ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">${n}</button>`).join("")}
+            </div>
+            <div style="margin-top:14px;font-size:13px;font-weight:600;text-align:center">Jämför mig mot</div>
+            <div class="theme-row" style="margin-top:6px">
+              <button class="theme-btn" data-leaderboard-gender="all" style="${leaderboardGenderFilter === "all" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Alla</button>
+              <button class="theme-btn" data-leaderboard-gender="man" style="${leaderboardGenderFilter === "man" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Män</button>
+              <button class="theme-btn" data-leaderboard-gender="kvinna" style="${leaderboardGenderFilter === "kvinna" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Kvinnor</button>
+            </div>
+          ` : ""}
+        </div>
+        ` : ""}
         <div style="margin-bottom:14px">
           ${cardChevronHeaderHTML("profileFramePickerToggle", "Ram runt profilbilden", profileFramePickerExpanded)}
           ${profileFramePickerExpanded ? `
@@ -11515,13 +11915,24 @@ function openProfileModal() {
       </div>
     </div>
   `;
+  // Sparar/återställer scroll-läget runt en omritning av profil-modalen.
+  // Utan den här hoppar sidan högst upp och man ser en full omritning
+  // ("flimmer") varje gång man t.ex. fäller ut bälten eller väljer ett
+  // bälte - samma buggmönster som tidigare fanns på träningsflik-ikonen.
+  const reopenProfileModal = () => {
+    const sheet = modalRoot.querySelector(".modal-sheet");
+    const scrollTop = sheet ? sheet.scrollTop : 0;
+    openProfileModal();
+    const newSheet = modalRoot.querySelector(".modal-sheet");
+    if (newSheet) newSheet.scrollTop = scrollTop;
+  };
   const beltToggleBtn = document.getElementById("beltSectionToggleBtn");
   if (beltToggleBtn) {
     beltToggleBtn.addEventListener("click", () => {
       beltSectionOpen = !beltSectionOpen;
       saveBeltSectionOpen();
       editingBeltName = null;
-      openProfileModal();
+      reopenProfileModal();
     });
   }
   const frameToggleBtn = document.getElementById("profileFramePickerToggle");
@@ -11529,9 +11940,53 @@ function openProfileModal() {
     frameToggleBtn.addEventListener("click", () => {
       profileFramePickerExpanded = !profileFramePickerExpanded;
       saveProfileFramePickerExpanded();
-      openProfileModal();
+      reopenProfileModal();
     });
   }
+  const passwordToggleBtn = document.getElementById("profilePasswordToggle");
+  if (passwordToggleBtn) {
+    passwordToggleBtn.addEventListener("click", () => {
+      profilePasswordSectionOpen = !profilePasswordSectionOpen;
+      reopenProfileModal();
+    });
+  }
+  const leaderboardToggleBtn = document.getElementById("leaderboardSettingsToggle");
+  if (leaderboardToggleBtn) {
+    leaderboardToggleBtn.addEventListener("click", () => {
+      leaderboardSettingsSectionOpen = !leaderboardSettingsSectionOpen;
+      reopenProfileModal();
+    });
+  }
+  document.querySelectorAll("[data-leaderboard-visibility]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardVisibility = btn.dataset.leaderboardVisibility;
+      saveLeaderboardVisibility();
+      pbRankCache = {};
+      scheduleCloudPush();
+      reopenProfileModal();
+      renderPersonalRecordsCard();
+      loadPbRanks();
+    });
+  });
+  document.querySelectorAll("[data-leaderboard-size]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardSize = parseInt(btn.dataset.leaderboardSize, 10);
+      saveLeaderboardSize();
+      scheduleCloudPush();
+      reopenProfileModal();
+    });
+  });
+  document.querySelectorAll("[data-leaderboard-gender]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardGenderFilter = btn.dataset.leaderboardGender;
+      saveLeaderboardGenderFilter();
+      pbRankCache = {};
+      scheduleCloudPush();
+      reopenProfileModal();
+      renderPersonalRecordsCard();
+      loadPbRanks();
+    });
+  });
   const beltBadgeFrameToggle = document.getElementById("beltBadgeFrameToggle");
   if (beltBadgeFrameToggle) {
     beltBadgeFrameToggle.addEventListener("change", (e) => {
@@ -11544,7 +11999,7 @@ function openProfileModal() {
     btn.addEventListener("click", () => {
       const name = btn.dataset.profileBelt;
       editingBeltName = editingBeltName === name ? null : name;
-      openProfileModal();
+      reopenProfileModal();
     });
   });
   const beltDateInput = document.getElementById("profileBeltDateInput");
@@ -11554,7 +12009,7 @@ function openProfileModal() {
       if (e.target.value) { profile.beltDates[editingBeltName] = e.target.value; markWeeklyMiscFlag("beltDateUpdatedWeek"); }
       else delete profile.beltDates[editingBeltName];
       saveProfile();
-      openProfileModal();
+      reopenProfileModal();
     });
   }
   const beltDateRemoveBtn = document.getElementById("profileBeltDateRemoveBtn");
@@ -11563,7 +12018,7 @@ function openProfileModal() {
       if (profile.beltDates) delete profile.beltDates[editingBeltName];
       saveProfile();
       editingBeltName = null;
-      openProfileModal();
+      reopenProfileModal();
     });
   }
   document.getElementById("profileName").addEventListener("input", (e) => {
@@ -11571,6 +12026,32 @@ function openProfileModal() {
     saveProfile();
     renderLevelHeroCard();
   });
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      await authSignOut();
+      reopenProfileModal();
+    });
+  }
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  if (changePasswordBtn) {
+    changePasswordBtn.addEventListener("click", async () => {
+      const newPassword = document.getElementById("newPasswordInput").value || "";
+      if (newPassword.length < 6) {
+        authFormError = "Lösenordet måste vara minst 6 tecken.";
+        reopenProfileModal();
+        return;
+      }
+      try {
+        await authChangePassword(newPassword);
+        authFormError = authRecoveryMode ? "Klart! Ditt nya lösenord är sparat." : "Lösenord ändrat.";
+        authRecoveryMode = false;
+      } catch (err) {
+        authFormError = (err && err.message) || "Kunde inte byta lösenord.";
+      }
+      reopenProfileModal();
+    });
+  }
   const avatarUploadBtn = document.getElementById("profileAvatarUploadBtn");
   const avatarFileInput = document.getElementById("profileAvatarFileInput");
   if (avatarUploadBtn && avatarFileInput) {
@@ -11582,7 +12063,7 @@ function openProfileModal() {
         .then((dataUrl) => {
           profile.avatar = dataUrl;
           saveProfile();
-          openProfileModal();
+          reopenProfileModal();
           renderLevelHeroCard();
         })
         .catch(() => { alert("Kunde inte läsa bilden. Prova en annan fil."); });
@@ -11593,7 +12074,7 @@ function openProfileModal() {
     avatarRemoveBtn.addEventListener("click", () => {
       profile.avatar = null;
       saveProfile();
-      openProfileModal();
+      reopenProfileModal();
       renderLevelHeroCard();
     });
   }
@@ -11617,14 +12098,14 @@ function openProfileModal() {
     btn.addEventListener("click", () => {
       profile.gender = btn.dataset.profileGender;
       saveProfile();
-      openProfileModal();
+      reopenProfileModal();
     });
   });
   modalRoot.querySelectorAll("[data-profile-activity]").forEach((btn) => {
     btn.addEventListener("click", () => {
       calorieState.activity = btn.dataset.profileActivity;
       saveActivityLevel();
-      openProfileModal();
+      reopenProfileModal();
     });
   });
   modalRoot.querySelectorAll("[data-goal]").forEach((btn) => {
@@ -11632,7 +12113,7 @@ function openProfileModal() {
       calorieGoal = btn.dataset.goal;
       saveCalorieGoal();
       markWeeklyMiscFlag("calorieGoalSetWeek");
-      openProfileModal();
+      reopenProfileModal();
     });
   });
   function closeProfileModal() {
@@ -11647,6 +12128,7 @@ function openProfileModal() {
     }
   }
   document.getElementById("profileModalCloseBtn").addEventListener("click", closeProfileModal);
+  document.getElementById("profileModalBackBtn").addEventListener("click", closeProfileModal);
   modalRoot.querySelectorAll("#profileModalOverlay").forEach((ov) => {
     ov.addEventListener("click", (e) => {
       if (e.target.id === "profileModalOverlay") { closeProfileModal(); reestablishModalMarkerIfStillOpen(); }
