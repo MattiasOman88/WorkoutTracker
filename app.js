@@ -935,6 +935,7 @@ function wireCollapsibleListToggles(root) {
       settingsListExpanded[id] = !settingsListExpanded[id];
       const renderFn = SETTINGS_LIST_RENDERERS[id];
       if (renderFn) renderFn();
+      if (id === "gymSplitsList") renderGymSplitsDefaultControls();
     });
   });
 }
@@ -1459,25 +1460,27 @@ let gymSplits = loadGymSplits();
 const DEFAULT_GYM_EXERCISES = {
   pass1: [
     { id: "ex_hantelpress", name: "Hantelpress", enabled: true },
-    { id: "ex_cablecross", name: "Cable Cross", enabled: true },
-    { id: "ex_flies", name: "Flies", enabled: true },
+    { id: "ex_cablecross", name: "Cable Cross Flyes", enabled: true },
+    { id: "ex_flies", name: "Maskin-Flyes", enabled: true },
     { id: "ex_bakaxlar", name: "Baksida axlar", enabled: true },
     { id: "ex_hantellyft_sida", name: "Hantellyft åt sidan", enabled: true },
     { id: "ex_pushdown_stang", name: "Pushdowns Stång", enabled: true },
     { id: "ex_pushdown_rep", name: "Pushdowns Rep", enabled: true },
+    { id: "ex_cablecross_sidolyft", name: "Cable Cross Sidolyft", enabled: true },
   ],
   pass2: [
     { id: "ex_roddmaskin", name: "Roddmaskin", enabled: true },
     { id: "ex_latsdrag_stang", name: "Latsdrag Stång", enabled: true },
-    { id: "ex_latsdrag_v", name: "Latsdrag V", enabled: true },
+    { id: "ex_latsdrag_v", name: "Latsdrag V-grepp", enabled: true },
     { id: "ex_rodd", name: "Rodd", enabled: true },
-    { id: "ex_pullover_cc", name: "Pullover CC", enabled: true },
-    { id: "ex_stangcurl", name: "Stångcurl", enabled: true },
-    { id: "ex_bicepscurl_cc", name: "Bicepscurl CC", enabled: true },
+    { id: "ex_pullover_cc", name: "Cable Cross Pullover", enabled: true },
+    { id: "ex_stangcurl", name: "Cable Cross Stångcurl", enabled: true },
+    { id: "ex_bicepscurl_cc", name: "Cable Cross Bicepscurl", enabled: true },
     { id: "ex_hantelcurl", name: "Hantelcurl", enabled: true },
     { id: "ex_hammercurl", name: "Hammercurl", enabled: true },
   ],
   pass3: [
+    { id: "ex_knaboj", name: "Knäböj", enabled: true },
     { id: "ex_benbojmaskin", name: "Benböj maskin", enabled: true },
     { id: "ex_benspark", name: "Benspark", enabled: true },
     { id: "ex_bencurl", name: "Bencurl", enabled: true },
@@ -1517,6 +1520,13 @@ const GYM_TEMPLATES = {
       { text: "Legs", exercises: ["Knäböj eller Benböj i maskin", "Benspark", "Bencurl", "Vadpress"] },
     ],
   },
+  halvkropp: {
+    label: "Halvkropp (Överkropp/Underkropp)",
+    splits: [
+      { text: "Överkropp", exercises: ["Bänkpress eller Hantelpress", "Kabelrodd", "Axelpress", "Latsdrag brett", "Bicepscurl", "Cable Pushdowns"] },
+      { text: "Underkropp", exercises: ["Knäböj eller Benböj i maskin", "Marklyft", "Benspark", "Bencurl", "Vadpress"] },
+    ],
+  },
 };
 function addGymTemplateSplits(templateKey) {
   const template = GYM_TEMPLATES[templateKey];
@@ -1534,6 +1544,111 @@ function addGymTemplateSplits(templateKey) {
   saveGymExercises();
   return addedIds;
 }
+// En personlig "standard" som användaren själv sparar - ett ögonblicks-
+// snapshot av gymSplits+gymExercises man kan återställa till senare, t.ex.
+// efter att ha testat en mall (Halvkropp/Helkropp/PPL) eller råkat ändra
+// något. Skiljer sig från DEFAULT_GYM_EXERCISES (fabriksdefault) genom att
+// det är användarens EGNA pass, inte apparens.
+function loadGymSplitsDefault() {
+  try { const raw = localStorage.getItem("gym_splits_default_v1"); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function saveGymSplitsDefaultToStorage() {
+  try {
+    if (gymSplitsDefault) localStorage.setItem("gym_splits_default_v1", JSON.stringify(gymSplitsDefault));
+    else localStorage.removeItem("gym_splits_default_v1");
+  } catch (e) { /* ignore */ }
+}
+let gymSplitsDefault = loadGymSplitsDefault();
+function saveCurrentGymSplitsAsDefault() {
+  gymSplitsDefault = {
+    splits: JSON.parse(JSON.stringify(gymSplits)),
+    exercises: JSON.parse(JSON.stringify(gymExercises)),
+  };
+  saveGymSplitsDefaultToStorage();
+  scheduleCloudPush();
+}
+function restoreGymSplitsDefault() {
+  if (!gymSplitsDefault) return;
+  gymSplits = JSON.parse(JSON.stringify(gymSplitsDefault.splits));
+  gymExercises = JSON.parse(JSON.stringify(gymSplitsDefault.exercises));
+  saveGymSplits();
+  saveGymExercises();
+  scheduleCloudPush();
+}
+// Engångsfix: användaren råkade av misstag ta bort sina tre ursprungliga
+// gympass (Bröst/Triceps/Axlar, Rygg/Biceps, Ben - samma som
+// DEFAULT_GYM_SPLITS/DEFAULT_GYM_EXERCISES, som från början byggdes just
+// utifrån dessa). Lägger tillbaka de som saknas (rör inte ev. andra pass
+// som redan finns), och sparar dem som "standard" om ingen standard redan
+// är sparad, så Återställ-knappen hittar dem igen framöver. Körs bara en
+// gång (flaggan nedan) - vill man ta bort dem igen senare får man göra det
+// manuellt utan att den här funktionen lägger tillbaka dem på nytt.
+function restoreOriginalGymSplitsOnce() {
+  try {
+    if (localStorage.getItem("gym_splits_original_restored_v1") === "true") return;
+    localStorage.setItem("gym_splits_original_restored_v1", "true");
+    const existingIds = new Set(gymSplits.map((g) => g.id));
+    let changed = false;
+    DEFAULT_GYM_SPLITS.forEach((split) => {
+      if (!existingIds.has(split.id)) {
+        gymSplits.push({ ...split });
+        gymExercises[split.id] = (DEFAULT_GYM_EXERCISES[split.id] || []).map((ex) => normalizeGymExercise({ ...ex }));
+        changed = true;
+      }
+    });
+    if (changed) {
+      saveGymSplits();
+      saveGymExercises();
+    }
+    if (!gymSplitsDefault) {
+      gymSplitsDefault = {
+        splits: JSON.parse(JSON.stringify(DEFAULT_GYM_SPLITS)),
+        exercises: JSON.parse(JSON.stringify(DEFAULT_GYM_EXERCISES)),
+      };
+      saveGymSplitsDefaultToStorage();
+    }
+  } catch (e) { /* ignore */ }
+}
+restoreOriginalGymSplitsOnce();
+// Engångsfix: namnbyten/tillägg i Bröst/Triceps/Axlar, Rygg/Biceps och Ben
+// enligt önskemål (döpte om ett par Cable Cross-övningar, lade till Cable
+// Cross Sidolyft samt Knäböj överst i Ben). Matchar bara övningar med de
+// gamla exakta namnen - rör inget om användaren redan bytt namn på dem
+// själv till något annat. Uppdaterar även en ev. redan sparad "standard"
+// (gymSplitsDefault) så Återställ-knappen ger samma, uppdaterade namn.
+function applyGymExerciseNameEditsOnce() {
+  try {
+    if (localStorage.getItem("gym_exercise_edits_2026_08_v1") === "true") return;
+    localStorage.setItem("gym_exercise_edits_2026_08_v1", "true");
+    const renameIn = (exObj, splitId, oldName, newName) => {
+      const list = exObj && exObj[splitId];
+      if (!list) return;
+      const ex = list.find((e) => e.name === oldName);
+      if (ex) ex.name = newName;
+    };
+    const addIfMissing = (exObj, splitId, name, atStart) => {
+      if (!exObj) return;
+      if (!exObj[splitId]) exObj[splitId] = [];
+      if (exObj[splitId].some((e) => e.name === name)) return;
+      const ex = normalizeGymExercise({ id: "ex_" + uid(), name, enabled: true });
+      if (atStart) exObj[splitId].unshift(ex); else exObj[splitId].push(ex);
+    };
+    [gymExercises, gymSplitsDefault && gymSplitsDefault.exercises].forEach((exObj) => {
+      if (!exObj) return;
+      renameIn(exObj, "pass1", "Cable Cross", "Cable Cross Flyes");
+      renameIn(exObj, "pass1", "Flies", "Maskin-Flyes");
+      addIfMissing(exObj, "pass1", "Cable Cross Sidolyft", false);
+      renameIn(exObj, "pass2", "Latsdrag V", "Latsdrag V-grepp");
+      renameIn(exObj, "pass2", "Pullover CC", "Cable Cross Pullover");
+      renameIn(exObj, "pass2", "Stångcurl", "Cable Cross Stångcurl");
+      renameIn(exObj, "pass2", "Bicepscurl CC", "Cable Cross Bicepscurl");
+      addIfMissing(exObj, "pass3", "Knäböj", true);
+    });
+    saveGymExercises();
+    if (gymSplitsDefault) saveGymSplitsDefaultToStorage();
+  } catch (e) { /* ignore */ }
+}
+applyGymExerciseNameEditsOnce();
 function nextGymSplitHint() {
   const enabledSplits = gymSplits.filter((g) => g.enabled);
   if (enabledSplits.length < 2) return null;
@@ -5900,7 +6015,10 @@ function removeFriendGroup(groupId) {
 }
 function friendsModalBodyHTML() {
   return `
-    <h2>👥 Vänner</h2>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button id="friendsModalBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
+      <h2>👥 Vänner</h2>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px">
       <div>
         <div style="font-size:13px;font-weight:600">Sökbar för andra</div>
@@ -5945,7 +6063,7 @@ function friendsModalBodyHTML() {
           `).join("")}
         </div>
       ` : ""}
-      ${friendList.length > 1 ? friendGroupsManagerHTML() : ""}
+      ${friendList.length > 0 ? friendGroupsManagerHTML() : ""}
       <div style="margin-top:16px">
         <div style="font-size:13px;font-weight:700;margin-bottom:6px">Dina vänner ${friendList.length ? `(${friendList.length})` : ""}</div>
         ${friendsListSectionHTML()}
@@ -5961,6 +6079,8 @@ function closeFriendsModal() {
 function wireFriendsModal() {
   const closeBtn = document.getElementById("friendsModalCloseBtn");
   if (closeBtn) closeBtn.addEventListener("click", closeFriendsModal);
+  const backBtn = document.getElementById("friendsModalBackBtn");
+  if (backBtn) backBtn.addEventListener("click", closeFriendsModal);
   const overlay = document.getElementById("friendsModalOverlay");
   if (overlay) {
     overlay.addEventListener("click", (e) => {
@@ -6082,6 +6202,7 @@ async function openFriendProfileModal(friend) {
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="friendProfileOverlay">
       <div class="modal-sheet" style="min-height:85vh;min-height:85dvh">
+        <button id="friendProfileBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
         <div style="display:flex;justify-content:center;margin-bottom:8px">${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
         <h2 style="text-align:center">${escapeHtml(friend.display_name || "Okänd")} <span style="font-size:13px;font-weight:400;color:var(--muted2)">#${shortSocialId(friend.user_id)}</span></h2>
         ${friendGroups.length ? `
@@ -6096,7 +6217,7 @@ async function openFriendProfileModal(friend) {
         <div style="display:flex;justify-content:space-around;text-align:center;margin-top:6px">
           <div>
             <div style="font-size:20px;font-weight:800">${levelInfo.level}</div>
-            <div style="font-size:11px;color:var(--muted2)">Nivå</div>
+            <div style="font-size:11px;color:var(--muted2)">Level</div>
           </div>
           <div>
             <div style="font-size:20px;font-weight:800">${friend.total_sessions || 0}</div>
@@ -6130,6 +6251,7 @@ async function openFriendProfileModal(friend) {
     </div>
   `;
   document.getElementById("friendProfileCloseBtn").addEventListener("click", returnToFriendsModal);
+  document.getElementById("friendProfileBackBtn").addEventListener("click", returnToFriendsModal);
   document.getElementById("friendProfileOverlay").addEventListener("click", (e) => {
     if (e.target.id === "friendProfileOverlay") { returnToFriendsModal(); reestablishModalMarkerIfStillOpen(); }
   });
@@ -8661,6 +8783,7 @@ function buildSettingsPayload() {
     bodyMeasurementTypes,
     pbExercises,
     gymExercises,
+    gymSplitsDefault,
     friendGroups,
     friendGroupOf,
     submissionBingoEnabled,
@@ -9567,6 +9690,7 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.bodyMeasurementsEnabled === "boolean") { bodyMeasurementsEnabled = remote.bodyMeasurementsEnabled; saveBodyMeasurementsEnabled(); }
     if (Array.isArray(remote.bodyMeasurementTypes) && remote.bodyMeasurementTypes.length) { bodyMeasurementTypes = remote.bodyMeasurementTypes; saveBodyMeasurementTypes(); }
     if (Array.isArray(remote.pbExercises) && remote.pbExercises.length) { pbExercises = migratePbExercisesList(remote.pbExercises); savePbExercises(); }
+    if (remote.gymSplitsDefault && typeof remote.gymSplitsDefault === "object") { gymSplitsDefault = remote.gymSplitsDefault; saveGymSplitsDefaultToStorage(); }
     if (Array.isArray(remote.friendGroups) && remote.friendGroups.length) { friendGroups = remote.friendGroups; saveFriendGroups(); }
     if (remote.friendGroupOf && typeof remote.friendGroupOf === "object") { friendGroupOf = remote.friendGroupOf; saveFriendGroupOf(); }
     if (remote.gymExercises && typeof remote.gymExercises === "object") { gymExercises = remote.gymExercises; saveGymExercises(); }
@@ -10636,8 +10760,9 @@ function openBackupModal() {
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="margin-top:-4px">Slå på för att kunna välja vilket gympass du kört.</p>
+          <p style="margin-top:-4px">Hantera dina gympass och vilka övningar som räknas som personbästa.</p>
           <div id="gymSplitsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
+          <div id="gymSplitsDefaultControls" class="settings-indent" style="margin-top:8px;${gymMenuEnabled ? "" : "display:none"}"></div>
           <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="gymExercisesHint">Övningar per gympass (för "Starta pass"):</p>
           <div id="gymExercisesManagement" class="settings-indent" style="display:flex;flex-direction:column;gap:14px;${gymMenuEnabled ? "" : "display:none"}"></div>
           <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="pbExercisesHint">Övningar för "Personbästa!" (visas när du loggar ett gympass):</p>
@@ -10949,6 +11074,7 @@ function openBackupModal() {
     gymMenuEnabled = e.target.checked;
     saveGymMenuEnabled();
     document.getElementById("gymSplitsList").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymSplitsDefaultControls").style.display = gymMenuEnabled ? "" : "none";
     document.getElementById("gymExercisesManagement").style.display = gymMenuEnabled ? "flex" : "none";
     document.getElementById("gymExercisesHint").style.display = gymMenuEnabled ? "" : "none";
     document.getElementById("pbExercisesList").style.display = gymMenuEnabled ? "flex" : "none";
@@ -10959,6 +11085,7 @@ function openBackupModal() {
     if (sheetC) sheetC.scrollTop = scrollTopC;
   });
   renderGymSplitsList();
+  renderGymSplitsDefaultControls();
   renderGymExercisesManagement();
   renderPbExercisesList();
   document.getElementById("konditionMenuToggle").addEventListener("change", (e) => {
@@ -11859,6 +11986,14 @@ function renderGymSplitsList() {
   const expanded = !!settingsListExpanded.gymSplitsList;
   let html = collapsibleListHeaderHTML("gymSplitsList", "Hantera gympass", gymSplits.length);
   if (expanded) {
+    html += `
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
+        <button class="chip" data-gym-template="halvkropp">Halvkropp</button>
+        <button class="chip" data-gym-template="helkropp">Helkropp A/B</button>
+        <button class="chip" data-gym-template="ppl">PPL</button>
+      </div>
+      <p style="margin:4px 0 0;font-size:11px;color:var(--muted2)">Lägger till färdiga gympass med övningar - du kan redigera eller ta bort dem efteråt.</p>
+    `;
     html += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px">` + gymSplits.map((g, i) => `
       <div style="display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:8px 10px">
         <input type="text" data-g-text="${i}" value="${escapeHtml(g.text)}" style="flex:1;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;padding:2px;min-width:0" />
@@ -11878,6 +12013,13 @@ function renderGymSplitsList() {
   list.innerHTML = html;
   wireCollapsibleListToggles(list);
   if (!expanded) return;
+  list.querySelectorAll("[data-gym-template]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      addGymTemplateSplits(btn.dataset.gymTemplate);
+      renderGymSplitsList();
+      renderGymExercisesManagement();
+    });
+  });
   list.querySelectorAll("[data-g-text]").forEach((input) => {
     input.addEventListener("input", (e) => {
       gymSplits[parseInt(input.dataset.gText, 10)].text = e.target.value;
@@ -11915,6 +12057,51 @@ function renderGymSplitsList() {
   }
 }
 SETTINGS_LIST_RENDERERS.gymSplitsList = renderGymSplitsList;
+
+// Spara/återställ-knapparna för "min standard" - egen liten sektion, separat
+// från den hopfällbara gympass-listan, placerad precis ovanför "Övningar
+// per gympass" så den syns oavsett om listan är utfälld eller ej.
+function renderGymSplitsDefaultControls() {
+  const wrap = document.getElementById("gymSplitsDefaultControls");
+  if (!wrap) return;
+  if (!settingsListExpanded.gymSplitsList) {
+    wrap.innerHTML = "";
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="chip" id="gymSaveDefaultBtn">💾 Spara som standard</button>
+      ${gymSplitsDefault ? `<button class="chip" id="gymRestoreDefaultBtn" data-armed="false">↺ Återställ standard</button>` : ""}
+    </div>
+    <p style="margin:4px 0 0;font-size:11px;color:var(--muted2)">${gymSplitsDefault ? "Sparad standard finns - återställ hit när du vill ha tillbaka dina egna gympass." : "Spara dina nuvarande gympass som din personliga standard - du kan alltid återställa till dem senare."}</p>
+  `;
+  const gymSaveDefaultBtn = document.getElementById("gymSaveDefaultBtn");
+  if (gymSaveDefaultBtn) {
+    gymSaveDefaultBtn.addEventListener("click", () => {
+      saveCurrentGymSplitsAsDefault();
+      renderGymSplitsDefaultControls();
+      showInfoToast("Sparade dina gympass som standard.");
+    });
+  }
+  const gymRestoreDefaultBtn = document.getElementById("gymRestoreDefaultBtn");
+  if (gymRestoreDefaultBtn) {
+    gymRestoreDefaultBtn.addEventListener("click", () => {
+      if (gymRestoreDefaultBtn.dataset.armed !== "true") {
+        gymRestoreDefaultBtn.dataset.armed = "true";
+        gymRestoreDefaultBtn.textContent = "Tryck igen för att återställa";
+        gymRestoreDefaultBtn.style.borderColor = "#E8834A";
+        gymRestoreDefaultBtn.style.color = "#E8834A";
+        return;
+      }
+      restoreGymSplitsDefault();
+      renderGymSplitsList();
+      renderGymExercisesManagement();
+      renderGymSplitsDefaultControls();
+      showInfoToast("Återställde dina standardpass.");
+    });
+  }
+}
+SETTINGS_LIST_RENDERERS.gymSplitsDefaultControls = renderGymSplitsDefaultControls;
 
 function openEditFoodEntryModal(entryId) {
   const entry = calorieLog.find((e) => e.id === entryId);
@@ -12310,12 +12497,15 @@ function openAboutModal() {
         <div class="card" style="background:var(--bg)">
           <div class="card-label">Funktioner</div>
           <div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
-            <div>🏋️ Registrera träningspass</div>
-            <div>⚖️ Följ din viktutveckling</div>
-            <div>🔥 Beräkna kaloribehov</div>
-            <div>🍽️ Logga kalorier</div>
-            <div>📊 Se statistik och framsteg</div>
-            <div>🏆 Lås upp prestationer genom träning och levla upp</div>
+            <div>🏋️ Registrera träningspass - styrkelyft, kondition, kampsport m.m.</div>
+            <div>⚖️ Följ din viktutveckling och kroppsmått</div>
+            <div>🔥 Beräkna kaloribehov och logga kalorier</div>
+            <div>🥇 Sätt personbästa och jämför dig mot andra på topplistan</div>
+            <div>🏆 Lås upp prestationer, levla upp och samla XP</div>
+            <div>🥋 Bälte-system för kampsport</div>
+            <div>📊 Se statistik, veckoutmaningar och årskrönika</div>
+            <div>👥 Lägg till vänner, se deras framsteg och gruppera dem</div>
+            <div>☁️ Molnsynk mellan dina enheter</div>
           </div>
         </div>
 
@@ -12726,7 +12916,10 @@ function openManageTypesModal() {
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="typesModalOverlay">
       <div class="modal-sheet">
-        <h2>Hantera träningspass</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button id="typesModalBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
+          <h2>Hantera träningspass</h2>
+        </div>
         <p>Lägg till, ta bort, ändra ordning, namn, färg, förinställda minuter eller kcal på dina träningspass. "Sjuk" och "Skadad" hanteras separat och visas alltid.</p>
         <div id="typesList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto"></div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
@@ -12793,8 +12986,9 @@ function openManageTypesModal() {
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <p style="margin-top:-4px">Slå på för att kunna välja vilket gympass du kört.</p>
+          <p style="margin-top:-4px">Hantera dina gympass och vilka övningar som räknas som personbästa.</p>
           <div id="gymSplitsList" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${gymMenuEnabled ? "" : "display:none"}"></div>
+          <div id="gymSplitsDefaultControls" class="settings-indent" style="margin-top:8px;${gymMenuEnabled ? "" : "display:none"}"></div>
           <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="gymExercisesHint">Övningar per gympass (för "Starta pass"):</p>
           <div id="gymExercisesManagement" class="settings-indent" style="display:flex;flex-direction:column;gap:14px;${gymMenuEnabled ? "" : "display:none"}"></div>
           <p class="settings-indent" style="margin-top:6px;${gymMenuEnabled ? "" : "display:none"}" id="pbExercisesHint">Övningar för "Personbästa!" (visas när du loggar ett gympass):</p>
@@ -12819,6 +13013,7 @@ function openManageTypesModal() {
   renderAdvancedQuestionsList();
   renderSubmissionTypesList();
   renderGymSplitsList();
+  renderGymSplitsDefaultControls();
   renderGymExercisesManagement();
   renderPbExercisesList();
   renderKonditionPbList();
@@ -12856,6 +13051,7 @@ function openManageTypesModal() {
     gymMenuEnabled = e.target.checked;
     saveGymMenuEnabled();
     document.getElementById("gymSplitsList").style.display = gymMenuEnabled ? "flex" : "none";
+    document.getElementById("gymSplitsDefaultControls").style.display = gymMenuEnabled ? "" : "none";
     document.getElementById("gymExercisesManagement").style.display = gymMenuEnabled ? "flex" : "none";
     document.getElementById("gymExercisesHint").style.display = gymMenuEnabled ? "" : "none";
     document.getElementById("pbExercisesList").style.display = gymMenuEnabled ? "flex" : "none";
@@ -12904,6 +13100,7 @@ function openManageTypesModal() {
   });
   wireEnterSubmit(["newTypeLabel", "newTypeMinutes", "newTypeKcal"], document.getElementById("addTypeBtn"));
   document.getElementById("typesModalCloseBtn").addEventListener("click", closeTypesModal);
+  document.getElementById("typesModalBackBtn").addEventListener("click", closeTypesModal);
   document.getElementById("typesModalOverlay").addEventListener("click", (e) => {
     if (e.target.id === "typesModalOverlay") { closeTypesModal(); reestablishModalMarkerIfStillOpen(); }
   });
