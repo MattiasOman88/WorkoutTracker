@@ -299,6 +299,10 @@ function fmtDateShort(iso) {
   const d = new Date(iso + "T00:00:00");
   return `${d.getDate()} ${MONTHS_SV[d.getMonth()]}`;
 }
+function fmtDateShortWithYear(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return `${d.getDate()} ${MONTHS_SV[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 function escapeHtml(str) {
   return String(str)
@@ -1287,6 +1291,13 @@ let leaderboardVisibility = loadLeaderboardVisibility();
 // Cache för hämtade rank-badges (nyckel -> {rank,total} eller null), så vi
 // inte behöver fråga servern på nytt varje gång kortet ritas om.
 let pbRankCache = {};
+
+// Global upplåsningsstatistik för prestationer (som Steam/PSN-trofésprocent).
+// achievementUnlockStatsCache: undefined = inte hämtad än, null = hämtning
+// misslyckades, objekt = {achievement_id: antal användare som låst upp den}.
+let achievementUnlockStatsCache;
+let achievementUnlockStatsTotalUsers = 0;
+let achievementUnlockStatsFetchPromise = null;
 
 // Sökbarhet för Vänner-funktionen (opt-in, likt Topplistan). Styr om ens
 // profilnamn dyker upp i andras sökningar - påverkar inte redan godkända
@@ -4328,7 +4339,7 @@ function levelHeroCardHTML() {
               ? `<div class="${beltFrame.className}" style="${beltFrame.style}">${img}</div>`
               : `<div style="padding:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${img}</div>`;
           })()}
-          ${stripeCount > 0 ? `<div class="belt-stripe-scroll" style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:3px;width:21px;max-height:88px;overflow-y:auto">
+          ${stripeCount > 0 ? `<div class="belt-stripe-scroll" style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;display:flex;flex-wrap:nowrap;gap:3px;max-width:61px;overflow-x:auto">
             ${Array.from({ length: stripeCount }, () => `<span style="width:5px;height:26px;background:#FFFFFF;border:1.5px solid #000000;border-radius:1px;display:inline-block;flex-shrink:0"></span>`).join("")}
           </div>` : ""}
         </div>
@@ -5339,6 +5350,86 @@ function wireAchievementsCardEvents() {
   });
 }
 
+function achievementUnlockStatsEnabled() {
+  return !!supabaseClient && !!authUser;
+}
+async function loadAchievementUnlockStats() {
+  if (!achievementUnlockStatsEnabled()) return;
+  if (achievementUnlockStatsCache !== undefined) return;
+  if (achievementUnlockStatsFetchPromise) return achievementUnlockStatsFetchPromise;
+  achievementUnlockStatsFetchPromise = (async () => {
+    try {
+      const { data, error } = await supabaseClient.rpc("get_achievement_unlock_stats");
+      if (error) throw error;
+      const map = {};
+      let total = 0;
+      (data || []).forEach((row) => {
+        if (row.total_users != null) total = Number(row.total_users);
+        if (row.achievement_id) map[row.achievement_id] = Number(row.unlock_count);
+      });
+      achievementUnlockStatsCache = map;
+      achievementUnlockStatsTotalUsers = total;
+    } catch (e) {
+      achievementUnlockStatsCache = null;
+    } finally {
+      achievementUnlockStatsFetchPromise = null;
+    }
+  })();
+  return achievementUnlockStatsFetchPromise;
+}
+function achievementUnlockStatLineText(id) {
+  if (!achievementUnlockStatsEnabled()) return "";
+  if (achievementUnlockStatsCache === undefined) return "···";
+  if (achievementUnlockStatsCache === null || !achievementUnlockStatsTotalUsers) return "";
+  const count = achievementUnlockStatsCache[id] || 0;
+  const pct = ((count / achievementUnlockStatsTotalUsers) * 100).toFixed(1);
+  return `${pct}% av alla användare har låst upp denna`;
+}
+function refreshAchievementUnlockStatLine(id) {
+  const el = document.getElementById("achievementUnlockStatLine");
+  if (!el) return;
+  const text = achievementUnlockStatLineText(id);
+  el.textContent = text;
+  el.style.display = text ? "" : "none";
+}
+
+// Statistik för prestige-nivå: hur många andra användare har nått MINST den
+// prestige-nivå man själv är på just nu (t.ex. "×4"). Cachas per
+// achievement+nivå-kombination eftersom det hämtas on-demand via RPC.
+let achievementPrestigeStatsCache = {};
+async function loadAchievementPrestigeStat(id, prestigeCount) {
+  const key = `${id}:${prestigeCount}`;
+  if (achievementPrestigeStatsCache[key] !== undefined) return achievementPrestigeStatsCache[key];
+  if (!achievementUnlockStatsEnabled()) return null;
+  try {
+    const { data, error } = await supabaseClient.rpc("get_achievement_prestige_stats", { p_achievement_id: id, p_min_level: prestigeCount });
+    if (error) throw error;
+    const row = Array.isArray(data) && data.length ? data[0] : null;
+    const result = row && row.total_users ? { count: Number(row.count_at_least), total: Number(row.total_users) } : null;
+    achievementPrestigeStatsCache[key] = result;
+    return result;
+  } catch (e) {
+    achievementPrestigeStatsCache[key] = null;
+    return null;
+  }
+}
+function achievementPrestigeStatLineText(id, prestigeCount) {
+  if (!achievementUnlockStatsEnabled()) return "";
+  const key = `${id}:${prestigeCount}`;
+  const cached = achievementPrestigeStatsCache[key];
+  if (cached === undefined) return "···";
+  if (!cached) return "";
+  const pct = ((cached.count / cached.total) * 100).toFixed(1);
+  return `${pct}% har nått minst nivå ${prestigeCount + 1}`;
+}
+function refreshAchievementPrestigeStatLine(id, prestigeCount) {
+  const el = document.getElementById("achievementPrestigeStatLine");
+  if (!el) return;
+  const text = achievementPrestigeStatLineText(id, prestigeCount);
+  el.textContent = text;
+  el.style.display = text ? "" : "none";
+}
+
 function openAchievementProgressModal(id) {
   const a = ACHIEVEMENTS.find((x) => x.id === id);
   if (!a) return;
@@ -5363,6 +5454,7 @@ function openAchievementProgressModal(id) {
       <div class="modal-sheet">
         <div style="display:flex;justify-content:center;margin-bottom:6px">${largeIconHTML}</div>
         <h2 style="text-align:center">🔒 ${escapeHtml(a.title)}</h2>
+        <p id="achievementUnlockStatLine" style="font-size:11px;color:var(--muted2);text-align:center;${achievementUnlockStatsEnabled() ? "" : "display:none"}">${achievementUnlockStatLineText(a.id)}</p>
         <p>${escapeHtml(a.desc)}</p>
         ${progress && progress.parts ? `
           <div class="card" style="background:var(--bg)">
@@ -5395,6 +5487,7 @@ function openAchievementProgressModal(id) {
   document.getElementById("achievementProgressOverlay").addEventListener("click", (e) => {
     if (e.target.id === "achievementProgressOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
   });
+  loadAchievementUnlockStats().then(() => refreshAchievementUnlockStatLine(a.id));
 }
 
 function openForgetAchievementModal(id, confirming) {
@@ -5402,7 +5495,7 @@ function openForgetAchievementModal(id, confirming) {
   if (!a) return;
   pushModalHistoryIfNeeded();
   const date = unlockedAchievementDates[id];
-  const dateText = date ? fmtDateShort(date) : "okänt datum (upplåst innan detta sparades)";
+  const dateText = date ? fmtDateShortWithYear(date) : "okänt datum (upplåst innan detta sparades)";
   const prestigeCount = achievementPrestige[id] || 0;
   const family = familyIconFor(a.id);
   const tier = achievementTier(a.xp);
@@ -5430,6 +5523,8 @@ function openForgetAchievementModal(id, confirming) {
           ${prestigeCount > 0 ? `<span style="position:absolute;top:-6px;right:calc(50% - 50px);background:#1A1A1A;color:#FFFFFF;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;border:1.5px solid #444">×${prestigeCount + 1}</span>` : ""}
         </div>
         <h2 style="text-align:center">🔓 ${escapeHtml(a.title)}${prestigeCount > 0 ? ` ×${prestigeCount + 1}` : ""}</h2>
+        <p id="achievementUnlockStatLine" style="font-size:11px;color:var(--muted2);text-align:center;${achievementUnlockStatsEnabled() ? "" : "display:none"}">${achievementUnlockStatLineText(a.id)}</p>
+        ${prestigeCount > 0 ? `<p id="achievementPrestigeStatLine" style="font-size:11px;color:var(--muted2);text-align:center;${achievementUnlockStatsEnabled() ? "" : "display:none"}">${achievementPrestigeStatLineText(a.id, prestigeCount)}</p>` : ""}
         <p>Upplåst ${dateText} — ${a.xp} XP · <span style="color:${medal.ring};font-weight:800;letter-spacing:0.2px">${TIER_NAMES[tier]}</span>.</p>
         ${confirming ? `
           <p style="font-weight:700">Är du säker på att du vill glömma prestationen?</p>
@@ -5482,6 +5577,10 @@ function openForgetAchievementModal(id, confirming) {
       handleModalClosedByUser();
       if (activeTab === "stats") renderStats();
     });
+  }
+  loadAchievementUnlockStats().then(() => refreshAchievementUnlockStatLine(a.id));
+  if (prestigeCount > 0) {
+    loadAchievementPrestigeStat(a.id, prestigeCount).then(() => refreshAchievementPrestigeStatLine(a.id, prestigeCount));
   }
 }
 
@@ -10074,6 +10173,7 @@ async function pushSocialProfileToCloud() {
     level: computeLevelInfo(totalXp()).level,
     total_xp: totalXp(),
     unlocked_achievements: unlockedAchievements,
+    achievement_prestige: achievementPrestige || {},
     total_sessions: totalSessions,
     current_streak: computeStreak(),
     belt_dates: profile.beltDates || {},
