@@ -1009,7 +1009,6 @@ let authFormMode = "login"; // "login" | "signup"
 let authFormError = "";
 let authFormBusy = false;
 let profilePasswordSectionOpen = false;
-let leaderboardSettingsSectionOpen = false;
 let debugSectionOpen = false;
 let debugUnlockedThisSession = false;
 const DEBUG_PIN_HASH = "5a4a0c923c9a9f9edb8a8f6aa3f6212708ad91b6895f3e5fa606710570b1f1f4";
@@ -1044,11 +1043,12 @@ function saveBeltBadgeFrameEnabled() {
 }
 let beltBadgeFrameEnabled = loadBeltBadgeFrameEnabled();
 
-function highestActiveBeltName() {
+function highestActiveBeltName(beltDates) {
+  const dates = beltDates || profile.beltDates;
   const tiers = BELT_TIERS.slice(0, 5);
   let highest = null;
   tiers.forEach((tier) => {
-    if (profile.beltDates && profile.beltDates[tier.name]) highest = tier.name;
+    if (dates && dates[tier.name]) highest = tier.name;
   });
   return highest;
 }
@@ -1286,6 +1286,42 @@ let leaderboardVisibility = loadLeaderboardVisibility();
 // Cache för hämtade rank-badges (nyckel -> {rank,total} eller null), så vi
 // inte behöver fråga servern på nytt varje gång kortet ritas om.
 let pbRankCache = {};
+
+// Sökbarhet för Vänner-funktionen (opt-in, likt Topplistan). Styr om ens
+// profilnamn dyker upp i andras sökningar - påverkar inte redan godkända
+// vänskaper. Sparas i social_profile-tabellen (inte JSON-klumpen).
+function loadSocialSearchable() {
+  try { return localStorage.getItem("social_searchable_v1") === "true"; } catch (e) { return false; }
+}
+function saveSocialSearchable() {
+  try { localStorage.setItem("social_searchable_v1", String(socialSearchable)); } catch (e) { /* ignore */ }
+}
+let socialSearchable = loadSocialSearchable();
+let friendsSectionOpen = false;
+let friendSearchQuery = "";
+let friendSearchResults = [];
+let friendSearchLoading = false;
+let incomingFriendRequests = [];
+let outgoingFriendRequests = [];
+let friendList = [];
+let friendsDataLoaded = false;
+// Egna, privata grupperingar av vänner (t.ex. "BJJ") - bara synliga för en
+// själv, inte delade med vännerna. Sparas i JSON-klumpen (app_state), inte
+// social_profile, eftersom det inte är något andra ska kunna se.
+function loadFriendGroups() {
+  try { const raw = localStorage.getItem("friend_groups_v1"); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) ? list : []; } catch (e) { return []; }
+}
+function saveFriendGroups() {
+  try { localStorage.setItem("friend_groups_v1", JSON.stringify(friendGroups)); } catch (e) { /* ignore */ }
+}
+let friendGroups = loadFriendGroups();
+function loadFriendGroupOf() {
+  try { const raw = localStorage.getItem("friend_group_of_v1"); const obj = raw ? JSON.parse(raw) : {}; return obj && typeof obj === "object" ? obj : {}; } catch (e) { return {}; }
+}
+function saveFriendGroupOf() {
+  try { localStorage.setItem("friend_group_of_v1", JSON.stringify(friendGroupOf)); } catch (e) { /* ignore */ }
+}
+let friendGroupOf = loadFriendGroupOf();
 // De rader (övningar/distanser) som senast ritades i Personbästa-kortet,
 // sparade så loadPbRanks() vet vilka rader den ska hämta rank åt.
 let lastPbRows = [];
@@ -2649,6 +2685,14 @@ const BELT_PROFILE_IMG_BLUE = "badges/BELT_PROFILE_IMG_BLUE.png";
 const BELT_PROFILE_IMG_BROWN = "badges/BELT_PROFILE_IMG_BROWN.png";
 const BELT_PROFILE_IMG_PURPLE = "badges/BELT_PROFILE_IMG_PURPLE.png";
 const BELT_PROFILE_IMG_BLACK = "badges/BELT_PROFILE_IMG_BLACK.png";
+
+const PROFILE_BELT_IMAGES = {
+  "Vitt bälte": BELT_PROFILE_IMG_WHITE,
+  "Blått bälte": BELT_PROFILE_IMG_BLUE,
+  "Lila bälte": BELT_PROFILE_IMG_PURPLE,
+  "Brunt bälte": BELT_PROFILE_IMG_BROWN,
+  "Svart bälte": BELT_PROFILE_IMG_BLACK,
+};
 
 const BELT_TIERS = [
   { name: "Vitt bälte", min: 1, color: "#F2F2F2", borderColor: "var(--border2)", image: BELT_TIER_IMG_1 },
@@ -5544,6 +5588,19 @@ function pbLeaderboardModalBodyHTML() {
     <div id="pbLeaderboardSubtext" style="text-align:center;font-size:11px;color:var(--muted2);margin-bottom:10px"></div>
     ${isAdmin ? `<button class="modal-btn secondary" id="pbLeaderboardAdminToggle" style="width:auto;margin:0 auto 10px;display:block;padding:6px 14px;font-size:12px">${pbLeaderboardAdminMode ? "👥 Visa vanlig topplista" : "🛠 Adminvy (alla, inkl. dolda)"}</button>` : ""}
     <div id="pbLeaderboardListWrap"><div class="empty">Hämtar…</div></div>
+    ${authUser ? `
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;text-align:center;margin-bottom:6px">Din synlighet i topplistan</div>
+      <div class="theme-row" style="justify-content:center">
+        <button class="theme-btn" data-pblb-visibility="hidden" style="padding:4px 10px;font-size:12px;${leaderboardVisibility === "hidden" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🙈 Dold</button>
+        <button class="theme-btn" data-pblb-visibility="anonymous" style="padding:4px 10px;font-size:12px;${leaderboardVisibility === "anonymous" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🎭 Anonym</button>
+        <button class="theme-btn" data-pblb-visibility="visible" style="padding:4px 10px;font-size:12px;${leaderboardVisibility === "visible" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">👤 Synlig</button>
+      </div>
+      <p style="margin-top:6px;font-size:11px;color:var(--muted2);text-align:center">
+        ${leaderboardVisibility === "hidden" ? "Du syns inte i topplistan för andra." : leaderboardVisibility === "anonymous" ? "Du syns i topplistan, men utan namn." : "Du syns i topplistan med ditt profilnamn."}
+      </p>
+    </div>
+    ` : ""}
     <div class="modal-close" id="pbLeaderboardCloseBtn">Stäng</div>
   `;
 }
@@ -5588,6 +5645,17 @@ function wirePbLeaderboardModal() {
       rerenderPbLeaderboardModal();
     });
   }
+  document.querySelectorAll("[data-pblb-visibility]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardVisibility = btn.dataset.pblbVisibility;
+      saveLeaderboardVisibility();
+      pbRankCache = {};
+      scheduleCloudPush();
+      rerenderPbLeaderboardModal();
+      renderPersonalRecordsCard();
+      loadPbRanks();
+    });
+  });
 }
 function rerenderPbLeaderboardModal() {
   const sheet = document.querySelector("#pbLeaderboardOverlay .modal-sheet");
@@ -5675,6 +5743,450 @@ async function renderPbLeaderboardList(row) {
     listWrap.innerHTML = `<div class="status-msg err" style="display:block">Kunde inte hämta topplistan.</div>`;
   }
 }
+/* ---------------- Vänner ---------------- */
+
+// Flera kan heta samma sak (t.ex. "Mattias"), så vi visar en kort ID-stubb
+// bredvid namnet i sök/vänlista så man kan skilja dem åt. Inget hemligt -
+// bara de första tecknen av det egna user_id:t, samma för alla som ser en
+// viss användare.
+function shortSocialId(userId) {
+  return userId ? String(userId).replace(/-/g, "").slice(0, 6) : "";
+}
+// Samma ram-katalog som den egna profilbilden (profileAvatarHTML), men tar
+// avatar/ram som parametrar istället för att läsa globala profile/authUser -
+// så den kan rita en väns bild, inte bara ens egen.
+function friendAvatarHTML(avatar, frameKey, size, padding) {
+  if (!avatar) {
+    return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--input-bg);border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0"><span style="width:${Math.round(size * 0.55)}px;height:${Math.round(size * 0.55)}px;display:flex">${ICONS.userCircle}</span></div>`;
+  }
+  const key = PROFILE_FRAME_KEY_MIGRATIONS[frameKey] || frameKey;
+  const resolvedKey = key && PROFILE_FRAMES[key] ? key : "cometGold";
+  const frame = profileFrameWrapStyle(resolvedKey, padding);
+  return `<div class="${frame.className}" style="${frame.style};flex-shrink:0"><img src="${avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" /></div>`;
+}
+function friendBeltsSectionHTML(beltDates) {
+  const highest = highestActiveBeltName(beltDates);
+  if (!highest) return "";
+  const tiers = BELT_TIERS.slice(0, 5);
+  const highestIdx = tiers.findIndex((t) => t.name === highest);
+  const visibleTiers = tiers.slice(0, highestIdx + 1);
+  return `
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Bälten</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${visibleTiers.map((tier) => {
+          const dateVal = beltDates[tier.name];
+          const d = dateVal ? new Date(dateVal + "T00:00:00") : null;
+          const dateLabel = d ? `${d.getDate()} ${MONTHS_SV[d.getMonth()]} ${d.getFullYear()}` : "";
+          return `
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:66px">
+              <img src="${PROFILE_BELT_IMAGES[tier.name]}" alt="${tier.name}" style="width:56px;height:auto;object-fit:contain;display:block" />
+              <span style="font-size:9px;text-align:center;color:var(--muted2);line-height:1.15">${dateLabel}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+async function openFriendsModal() {
+  pushModalHistoryIfNeeded();
+  friendSearchQuery = "";
+  friendSearchResults = [];
+  friendSearchLoading = false;
+  friendsDataLoaded = false;
+  modalRoot.innerHTML = `<div class="modal-overlay" id="friendsModalOverlay"><div class="modal-sheet" style="min-height:85vh;min-height:85dvh">${friendsModalBodyHTML()}</div></div>`;
+  wireFriendsModal();
+  await loadFriendsData();
+  rerenderFriendsModal();
+}
+async function loadFriendsData() {
+  if (!supabaseClient || !authUser) return;
+  try {
+    const [incomingRes, outgoingRes, listRes] = await Promise.all([
+      supabaseClient.rpc("get_incoming_friend_requests"),
+      supabaseClient.rpc("get_outgoing_friend_requests"),
+      supabaseClient.rpc("get_friend_list"),
+    ]);
+    incomingFriendRequests = Array.isArray(incomingRes.data) ? incomingRes.data : [];
+    outgoingFriendRequests = Array.isArray(outgoingRes.data) ? outgoingRes.data : [];
+    friendList = Array.isArray(listRes.data) ? listRes.data : [];
+  } catch (e) { /* visas som tom lista */ }
+  friendsDataLoaded = true;
+}
+function friendSearchResultsHTML() {
+  if (friendSearchLoading) return `<div class="empty">Söker…</div>`;
+  if (!friendSearchResults.length) return "";
+  return friendSearchResults.map((r) => `
+    <div class="list-row">
+      ${friendAvatarHTML(r.avatar, r.frame, 32, 2)}
+      <span style="font-size:13px;flex:1">${escapeHtml(r.display_name || "Okänd")} <span style="font-size:11px;color:var(--muted2)">#${shortSocialId(r.user_id)}</span></span>
+      ${r.relationship === "friends" ? `<span style="font-size:11px;color:var(--muted2)">Vänner</span>`
+        : r.relationship === "pending_sent" ? `<span style="font-size:11px;color:var(--muted2)">Väntar</span>`
+        : r.relationship === "pending_received" ? `<button class="modal-btn primary" data-friend-accept="${escapeHtml(r.user_id)}" style="width:auto;padding:6px 12px;font-size:12px">Godkänn</button>`
+        : `<button class="modal-btn secondary" data-friend-add="${escapeHtml(r.user_id)}" style="width:auto;padding:6px 12px;font-size:12px">Lägg till</button>`}
+    </div>
+  `).join("");
+}
+function friendRowHTML(f) {
+  return `
+    <button data-open-friend="${escapeHtml(f.user_id)}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:8px 0;font-family:inherit;cursor:pointer;text-align:left;border-bottom:1px solid var(--border)">
+      <span style="display:flex;align-items:center;gap:10px;min-width:0">
+        ${friendAvatarHTML(f.avatar, f.frame, 36, 2)}
+        <span style="font-size:14px;font-weight:600;color:var(--text)">${escapeHtml(f.display_name || "Okänd")} <span style="font-size:11px;font-weight:400;color:var(--muted2)">#${shortSocialId(f.user_id)}</span></span>
+      </span>
+      <span style="font-size:12px;color:var(--muted2);flex-shrink:0">Nivå ${f.level}</span>
+    </button>
+  `;
+}
+function friendsListSectionHTML() {
+  if (friendList.length === 0) return `<div class="empty">Inga vänner ännu — sök efter någon ovan.</div>`;
+  if (!friendGroups.length) return friendList.map((f) => friendRowHTML(f)).join("");
+  const groupsWithMembers = friendGroups
+    .map((g) => ({ group: g, members: friendList.filter((f) => friendGroupOf[f.user_id] === g.id) }))
+    .filter((g) => g.members.length);
+  const groupedIds = new Set(groupsWithMembers.flatMap((g) => g.members.map((f) => f.user_id)));
+  const ungrouped = friendList.filter((f) => !groupedIds.has(f.user_id));
+  let html = "";
+  groupsWithMembers.forEach((g) => {
+    html += `<div style="font-size:12px;font-weight:700;color:var(--muted2);margin:14px 0 4px">${escapeHtml(g.group.name)}</div>`;
+    html += g.members.map((f) => friendRowHTML(f)).join("");
+  });
+  if (ungrouped.length) {
+    html += `<div style="font-size:12px;font-weight:700;color:var(--muted2);margin:14px 0 4px">Ogrupperad</div>`;
+    html += ungrouped.map((f) => friendRowHTML(f)).join("");
+  }
+  return html;
+}
+function friendGroupsManagerHTML() {
+  return `
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">Grupper</div>
+      ${friendGroups.length ? `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          ${friendGroups.map((g) => `
+            <span class="chip" style="display:inline-flex;align-items:center;gap:6px">
+              ${escapeHtml(g.name)}
+              <span data-remove-friend-group="${escapeHtml(g.id)}" style="cursor:pointer;opacity:0.7">✕</span>
+            </span>
+          `).join("")}
+        </div>
+      ` : ""}
+      <div style="display:flex;gap:8px">
+        <input type="text" id="newFriendGroupInput" placeholder="Nytt gruppnamn, t.ex. BJJ" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit" />
+        <button class="modal-btn secondary" id="addFriendGroupBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Lägg till</button>
+      </div>
+    </div>
+  `;
+}
+function addFriendGroup() {
+  const input = document.getElementById("newFriendGroupInput");
+  const name = input ? input.value.trim() : "";
+  if (!name) return;
+  friendGroups.push({ id: uid(), name });
+  saveFriendGroups();
+  scheduleCloudPush();
+  rerenderFriendsModal();
+}
+function removeFriendGroup(groupId) {
+  friendGroups = friendGroups.filter((g) => g.id !== groupId);
+  saveFriendGroups();
+  Object.keys(friendGroupOf).forEach((userId) => {
+    if (friendGroupOf[userId] === groupId) delete friendGroupOf[userId];
+  });
+  saveFriendGroupOf();
+  scheduleCloudPush();
+  rerenderFriendsModal();
+}
+function friendsModalBodyHTML() {
+  return `
+    <h2>👥 Vänner</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px">
+      <div>
+        <div style="font-size:13px;font-weight:600">Sökbar för andra</div>
+        <div style="font-size:11px;color:var(--muted2)">Måste vara på för att andra ska hitta dig via sök.</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="socialSearchableToggle" ${socialSearchable ? "checked" : ""} />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <p style="margin-top:6px;font-size:11px;color:var(--muted2);text-align:center">Ditt ID: <strong>#${authUser ? shortSocialId(authUser.id) : ""}</strong> — dela det om flera har samma namn som du.</p>
+
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <input type="text" id="friendSearchInput" placeholder="Sök på profilnamn…" value="${escapeHtml(friendSearchQuery)}" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit" />
+      <button class="modal-btn primary" id="friendSearchBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Sök</button>
+    </div>
+    <div id="friendSearchResultsWrap" style="margin-top:6px">${friendSearchResultsHTML()}</div>
+
+    ${!friendsDataLoaded ? `<div class="empty" style="margin-top:14px">Hämtar…</div>` : `
+      ${incomingFriendRequests.length ? `
+        <div style="margin-top:16px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Inkommande förfrågningar</div>
+          ${incomingFriendRequests.map((r) => `
+            <div class="list-row">
+              ${friendAvatarHTML(r.avatar, r.frame, 32, 2)}
+              <span style="font-size:13px;flex:1">${escapeHtml(r.display_name || "Okänd")} <span style="font-size:11px;color:var(--muted2)">#${shortSocialId(r.user_id)}</span></span>
+              <button class="modal-btn primary" data-friend-accept="${escapeHtml(r.user_id)}" style="width:auto;padding:6px 12px;font-size:12px">Godkänn</button>
+              <button class="delete-btn" data-friend-decline="${escapeHtml(r.user_id)}">${ICONS.trash}</button>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      ${outgoingFriendRequests.length ? `
+        <div style="margin-top:16px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Väntar på svar</div>
+          ${outgoingFriendRequests.map((r) => `
+            <div class="list-row">
+              ${friendAvatarHTML(r.avatar, r.frame, 32, 2)}
+              <span style="font-size:13px;flex:1">${escapeHtml(r.display_name || "Okänd")} <span style="font-size:11px;color:var(--muted2)">#${shortSocialId(r.user_id)}</span></span>
+              <button class="delete-btn" data-friend-cancel="${escapeHtml(r.user_id)}">${ICONS.trash}</button>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      ${friendList.length > 1 ? friendGroupsManagerHTML() : ""}
+      <div style="margin-top:16px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px">Dina vänner ${friendList.length ? `(${friendList.length})` : ""}</div>
+        ${friendsListSectionHTML()}
+      </div>
+    `}
+    <div class="modal-close" id="friendsModalCloseBtn">← Tillbaka</div>
+  `;
+}
+function closeFriendsModal() {
+  modalRoot.innerHTML = "";
+  openProfileModal();
+}
+function wireFriendsModal() {
+  const closeBtn = document.getElementById("friendsModalCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", closeFriendsModal);
+  const overlay = document.getElementById("friendsModalOverlay");
+  if (overlay) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target.id === "friendsModalOverlay") { closeFriendsModal(); reestablishModalMarkerIfStillOpen(); }
+    });
+  }
+  const searchableToggle = document.getElementById("socialSearchableToggle");
+  if (searchableToggle) {
+    searchableToggle.addEventListener("change", (e) => {
+      socialSearchable = e.target.checked;
+      saveSocialSearchable();
+      scheduleCloudPush();
+    });
+  }
+  const searchBtn = document.getElementById("friendSearchBtn");
+  const searchInput = document.getElementById("friendSearchInput");
+  if (searchBtn) searchBtn.addEventListener("click", runFriendSearch);
+  wireEnterSubmit(["friendSearchInput"], searchBtn);
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => { friendSearchQuery = e.target.value; });
+  }
+  document.querySelectorAll("[data-friend-add]").forEach((btn) => {
+    btn.addEventListener("click", () => sendFriendRequestTo(btn.dataset.friendAdd));
+  });
+  document.querySelectorAll("[data-friend-accept]").forEach((btn) => {
+    btn.addEventListener("click", () => respondToFriendRequest(btn.dataset.friendAccept, true));
+  });
+  document.querySelectorAll("[data-friend-decline]").forEach((btn) => {
+    btn.addEventListener("click", () => respondToFriendRequest(btn.dataset.friendDecline, false));
+  });
+  document.querySelectorAll("[data-friend-cancel]").forEach((btn) => {
+    btn.addEventListener("click", () => cancelOrRemoveFriend(btn.dataset.friendCancel));
+  });
+  document.querySelectorAll("[data-open-friend]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const f = friendList.find((x) => x.user_id === btn.dataset.openFriend);
+      if (f) openFriendProfileModal(f);
+    });
+  });
+  const addGroupBtn = document.getElementById("addFriendGroupBtn");
+  if (addGroupBtn) addGroupBtn.addEventListener("click", addFriendGroup);
+  wireEnterSubmit(["newFriendGroupInput"], addGroupBtn);
+  document.querySelectorAll("[data-remove-friend-group]").forEach((btn) => {
+    btn.addEventListener("click", () => removeFriendGroup(btn.dataset.removeFriendGroup));
+  });
+}
+function rerenderFriendsModal() {
+  const sheet = document.querySelector("#friendsModalOverlay .modal-sheet");
+  if (!sheet) return;
+  sheet.innerHTML = friendsModalBodyHTML();
+  wireFriendsModal();
+}
+async function runFriendSearch() {
+  const input = document.getElementById("friendSearchInput");
+  const query = (input ? input.value : friendSearchQuery).trim();
+  friendSearchQuery = query;
+  if (query.length < 2) { showInfoToast("Skriv minst 2 tecken för att söka."); return; }
+  friendSearchLoading = true;
+  const wrap = document.getElementById("friendSearchResultsWrap");
+  if (wrap) wrap.innerHTML = friendSearchResultsHTML();
+  try {
+    const { data, error } = await supabaseClient.rpc("search_social_users", { p_query: query });
+    if (error) throw error;
+    friendSearchResults = Array.isArray(data) ? data : [];
+  } catch (e) {
+    friendSearchResults = [];
+  }
+  friendSearchLoading = false;
+  rerenderFriendsModal();
+}
+async function sendFriendRequestTo(userId) {
+  try {
+    const { error } = await supabaseClient.rpc("send_or_accept_friend_request", { p_to_user_id: userId });
+    if (error) throw error;
+    showInfoToast("Vänförfrågan skickad!");
+    await loadFriendsData();
+    await runFriendSearch();
+  } catch (e) {
+    showInfoToast("Kunde inte skicka förfrågan.");
+  }
+}
+async function respondToFriendRequest(fromUserId, accept) {
+  try {
+    const { error } = await supabaseClient.rpc("respond_friend_request", { p_from_user_id: fromUserId, p_accept: accept });
+    if (error) throw error;
+    await loadFriendsData();
+    rerenderFriendsModal();
+  } catch (e) {
+    showInfoToast("Något gick fel.");
+  }
+}
+async function cancelOrRemoveFriend(otherUserId) {
+  try {
+    const { error } = await supabaseClient.rpc("remove_friend", { p_other_user_id: otherUserId });
+    if (error) throw error;
+    await loadFriendsData();
+    if (friendSearchResults.length) await runFriendSearch(); else rerenderFriendsModal();
+  } catch (e) {
+    showInfoToast("Något gick fel.");
+  }
+}
+
+function friendAchievementBadgeHTML(a) {
+  const mainIconHTML = a.badgeImage
+    ? `<img src="${a.badgeImage}" alt="${escapeHtml(a.title)}" style="width:34px;height:34px;object-fit:contain;display:block" />`
+    : `<span style="width:16px;height:16px;display:flex">${ICONS[a.icon] || ""}</span>`;
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:58px" title="${escapeHtml(a.title)}">
+      <div style="width:44px;height:44px;border-radius:50%;border:1.5px solid ${tabColors.stats};display:flex;align-items:center;justify-content:center;background:var(--input-bg)">${mainIconHTML}</div>
+      <span style="font-size:9px;text-align:center;color:var(--text);line-height:1.15">${escapeHtml(a.title)}</span>
+    </div>
+  `;
+}
+async function openFriendProfileModal(friend) {
+  pushModalHistoryIfNeeded();
+  const levelInfo = computeLevelInfo(friend.total_xp || 0);
+  const unlockedSet = new Set(Array.isArray(friend.unlocked_achievements) ? friend.unlocked_achievements : []);
+  const unlockedAchDefs = ACHIEVEMENTS.filter((a) => unlockedSet.has(a.id) && !a.secret);
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="friendProfileOverlay">
+      <div class="modal-sheet" style="min-height:85vh;min-height:85dvh">
+        <div style="display:flex;justify-content:center;margin-bottom:8px">${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
+        <h2 style="text-align:center">${escapeHtml(friend.display_name || "Okänd")} <span style="font-size:13px;font-weight:400;color:var(--muted2)">#${shortSocialId(friend.user_id)}</span></h2>
+        ${friendGroups.length ? `
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px">
+          <span style="font-size:12px;color:var(--muted2)">Grupp:</span>
+          <select data-friend-group-select style="width:auto">
+            <option value="">Ingen grupp</option>
+            ${friendGroups.map((g) => `<option value="${escapeHtml(g.id)}" ${friendGroupOf[friend.user_id] === g.id ? "selected" : ""}>${escapeHtml(g.name)}</option>`).join("")}
+          </select>
+        </div>
+        ` : ""}
+        <div style="display:flex;justify-content:space-around;text-align:center;margin-top:6px">
+          <div>
+            <div style="font-size:20px;font-weight:800">${levelInfo.level}</div>
+            <div style="font-size:11px;color:var(--muted2)">Nivå</div>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:800">${friend.total_sessions || 0}</div>
+            <div style="font-size:11px;color:var(--muted2)">Pass</div>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:800">${friend.current_streak || 0}</div>
+            <div style="font-size:11px;color:var(--muted2)">Streak</div>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div style="height:8px;border-radius:6px;background:var(--border);overflow:hidden">
+            <div style="height:100%;width:${Math.min(100, Math.round((levelInfo.xpIntoLevel / Math.max(1, levelInfo.xpForNext)) * 100))}%;background:${tabColors.stats}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted2);text-align:center;margin-top:4px">${levelInfo.xpIntoLevel} / ${levelInfo.xpForNext} XP till nästa nivå</div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Upplåsta prestationer (${unlockedAchDefs.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px 8px">
+            ${unlockedAchDefs.length ? unlockedAchDefs.map((a) => friendAchievementBadgeHTML(a)).join("") : `<div class="empty">Inga prestationer upplåsta ännu.</div>`}
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Personbästa</div>
+          <div id="friendPbListWrap"><div class="empty">Hämtar…</div></div>
+        </div>
+        ${friendBeltsSectionHTML(friend.belt_dates || {})}
+        <button class="delete-btn" data-remove-friend="${escapeHtml(friend.user_id)}" data-armed="false" style="width:auto;margin:14px auto 0;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2)">${ICONS.trash} Ta bort vän</button>
+        <div class="modal-close" id="friendProfileCloseBtn">← Tillbaka</div>
+      </div>
+    </div>
+  `;
+  document.getElementById("friendProfileCloseBtn").addEventListener("click", returnToFriendsModal);
+  document.getElementById("friendProfileOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "friendProfileOverlay") { returnToFriendsModal(); reestablishModalMarkerIfStillOpen(); }
+  });
+  const groupSelect = document.querySelector("[data-friend-group-select]");
+  if (groupSelect) {
+    groupSelect.addEventListener("change", (e) => {
+      const val = e.target.value;
+      if (val) friendGroupOf[friend.user_id] = val;
+      else delete friendGroupOf[friend.user_id];
+      saveFriendGroupOf();
+      scheduleCloudPush();
+    });
+  }
+  const removeFriendBtn = document.querySelector("[data-remove-friend]");
+  if (removeFriendBtn) {
+    removeFriendBtn.addEventListener("click", async () => {
+      if (removeFriendBtn.dataset.armed !== "true") {
+        removeFriendBtn.dataset.armed = "true";
+        removeFriendBtn.style.color = "#E8834A";
+        removeFriendBtn.title = "Tryck igen för att bekräfta";
+        return;
+      }
+      await cancelOrRemoveFriend(removeFriendBtn.dataset.removeFriend);
+      returnToFriendsModal();
+    });
+  }
+  await renderFriendPbList(friend.user_id);
+}
+function returnToFriendsModal() {
+  modalRoot.innerHTML = `<div class="modal-overlay" id="friendsModalOverlay"><div class="modal-sheet" style="min-height:85vh;min-height:85dvh">${friendsModalBodyHTML()}</div></div>`;
+  wireFriendsModal();
+}
+async function renderFriendPbList(userId) {
+  const wrap = document.getElementById("friendPbListWrap");
+  if (!wrap) return;
+  try {
+    const { data, error } = await supabaseClient.rpc("get_friend_pbs", { p_user_id: userId });
+    if (error) throw error;
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) { wrap.innerHTML = `<div class="empty">Inga personbästa loggade än.</div>`; return; }
+    wrap.innerHTML = rows.map((r) => {
+      if (r.kind === "strength") {
+        const exDef = pbExercises.find((p) => p.id === r.exercise_id);
+        const label = exDef ? exDef.label : r.exercise_id;
+        const unit = exDef && exDef.unit === "reps" ? "reps" : "kg";
+        return `<div class="list-row"><span style="font-size:13px;flex:1">${escapeHtml(label)}</span><span style="font-size:13px;font-weight:600">${Number(r.value)} ${unit}</span></div>`;
+      }
+      const distDef = konditionPbDistances.find((d) => d.id === r.distance_id);
+      const distLabel = distDef ? distDef.label : r.distance_id;
+      const typeLabel = r.type ? typeMeta(r.type).label : "";
+      return `<div class="list-row"><span style="font-size:13px;flex:1">${escapeHtml(distLabel)}${typeLabel ? ` (${escapeHtml(typeLabel)})` : ""}</span><span style="font-size:13px;font-weight:600">${fmtMinSec(Number(r.value))}</span></div>`;
+    }).join("");
+  } catch (e) {
+    wrap.innerHTML = `<div class="status-msg err" style="display:block">Kunde inte hämta personbästa.</div>`;
+  }
+}
+
 function pbHistoryCardHTML() {
   const gymEntries = pbLog.map((e) => {
     const exDef = pbExercises.find((p) => p.id === e.exerciseId) || {};
@@ -8149,6 +8661,8 @@ function buildSettingsPayload() {
     bodyMeasurementTypes,
     pbExercises,
     gymExercises,
+    friendGroups,
+    friendGroupOf,
     submissionBingoEnabled,
     kampsportAdvancedSectionOpen,
     showSubmissionBingo,
@@ -9053,6 +9567,8 @@ function mergeRemoteStateIntoLocal(remote) {
     if (typeof remote.bodyMeasurementsEnabled === "boolean") { bodyMeasurementsEnabled = remote.bodyMeasurementsEnabled; saveBodyMeasurementsEnabled(); }
     if (Array.isArray(remote.bodyMeasurementTypes) && remote.bodyMeasurementTypes.length) { bodyMeasurementTypes = remote.bodyMeasurementTypes; saveBodyMeasurementTypes(); }
     if (Array.isArray(remote.pbExercises) && remote.pbExercises.length) { pbExercises = migratePbExercisesList(remote.pbExercises); savePbExercises(); }
+    if (Array.isArray(remote.friendGroups) && remote.friendGroups.length) { friendGroups = remote.friendGroups; saveFriendGroups(); }
+    if (remote.friendGroupOf && typeof remote.friendGroupOf === "object") { friendGroupOf = remote.friendGroupOf; saveFriendGroupOf(); }
     if (remote.gymExercises && typeof remote.gymExercises === "object") { gymExercises = remote.gymExercises; saveGymExercises(); }
     if (typeof remote.submissionBingoEnabled === "boolean") { submissionBingoEnabled = remote.submissionBingoEnabled; saveSubmissionBingoEnabled(); }
     if (typeof remote.kampsportAdvancedSectionOpen === "boolean") { kampsportAdvancedSectionOpen = remote.kampsportAdvancedSectionOpen; saveKampsportAdvancedSectionOpen(); }
@@ -9419,6 +9935,39 @@ async function pullAndMergeLeaderboardVisibilityFromCloud() {
   }
 }
 
+// Skickar upp en lättviktig sammanfattning (nivå, XP, upplåsta prestationer,
+// antal pass, streak, sökbarhet) som andra användare kan se om de är vänner
+// (eller hitta via sök, om sökbar). Räknas fram lokalt av samma logik som
+// resten av appen använder - servern lagrar bara det färdiga resultatet.
+async function pushSocialProfileToCloud() {
+  if (!supabaseClient || !authUser) return;
+  const totalSessions = workoutEntries.filter((e) => e.type !== "Sjuk" && e.type !== "Skadad").length;
+  const { error } = await supabaseClient.from("social_profile").upsert({
+    user_id: authUser.id,
+    display_name: profile.name || null,
+    avatar: profile.avatar || null,
+    frame: profile.frame || null,
+    level: computeLevelInfo(totalXp()).level,
+    total_xp: totalXp(),
+    unlocked_achievements: unlockedAchievements,
+    total_sessions: totalSessions,
+    current_streak: computeStreak(),
+    belt_dates: profile.beltDates || {},
+    searchable: socialSearchable,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+async function pullAndMergeSocialSearchableFromCloud() {
+  if (!supabaseClient || !authUser) return;
+  const { data, error } = await supabaseClient.from("social_profile").select("searchable").eq("user_id", authUser.id).maybeSingle();
+  if (error) throw error;
+  if (data && typeof data.searchable === "boolean") {
+    socialSearchable = data.searchable;
+    saveSocialSearchable();
+  }
+}
+
 async function pushStateToCloud() {
   if (!supabaseClient || !authUser) return;
   if (cloudSyncInFlight) { cloudSyncQueuedWhileInFlight = true; return; }
@@ -9441,6 +9990,7 @@ async function pushStateToCloud() {
     await pushSavedMealsToCloud();
     await pushFoodFavoritesToCloud();
     await pushLeaderboardVisibilityToCloud();
+    await pushSocialProfileToCloud();
     cloudSyncStatus = "idle";
     cloudSyncErrorMsg = "";
   } catch (e) {
@@ -9489,6 +10039,7 @@ async function pullAndMergeFromCloud() {
     await pullAndMergeSavedMealsFromCloud();
     await pullAndMergeFoodFavoritesFromCloud();
     await pullAndMergeLeaderboardVisibilityFromCloud();
+    await pullAndMergeSocialSearchableFromCloud();
     pbRankCache = {};
     await pushStateToCloud();
   } catch (e) {
@@ -11823,6 +12374,43 @@ function openProfileModal() {
   if (weightEntries.length) {
     calorieState.weight = weightEntries[weightEntries.length - 1].value;
   }
+  const ramSectionHTML = `
+    <div style="margin-bottom:14px">
+      ${cardChevronHeaderHTML("profileFramePickerToggle", "Ram runt profilbilden", profileFramePickerExpanded)}
+      ${profileFramePickerExpanded ? `
+      <p style="margin-top:6px;font-size:12px;color:var(--muted);text-align:center">Nya sken låses upp när du levlar upp.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+        ${(() => {
+          const currentLevel = computeLevelInfo(totalXp()).level;
+          const currentFrame = resolveProfileFrame();
+          return Object.keys(PROFILE_FRAMES).map((key) => {
+            const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+            const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+            const isSelected = currentFrame === key;
+            const swatch = profileFrameWrapStyle(key, 2);
+            return `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
+                <button ${isUnlocked ? `data-profile-frame="${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;border-radius:50%;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
+                  <div class="${swatch.className}" style="${swatch.style};width:100%;height:100%;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}">
+                    <div style="width:100%;height:100%;border-radius:50%;background:var(--input-bg)"></div>
+                  </div>
+                </button>
+                ${!isUnlocked ? `<span style="font-size:9px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
+              </div>
+            `;
+          }).join("");
+        })()}
+      </div>
+      <div class="toggle-row" style="margin-top:10px">
+        <span style="font-size:13px;font-weight:600">Visa rörligt sken på Level-Badgen</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="beltBadgeFrameToggle" ${beltBadgeFrameEnabled ? "checked" : ""} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      ` : ""}
+    </div>
+  `;
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="profileModalOverlay">
       <div class="modal-sheet">
@@ -11842,6 +12430,9 @@ function openProfileModal() {
         ${authUser ? `
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
           <div style="text-align:center;font-size:12px;color:var(--muted)">${escapeHtml(authUser.email || "")}</div>
+        </div>
+        ${ramSectionHTML}
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
           ${authRecoveryMode ? `<div class="status-msg ok" style="display:block">Du klickade på en återställningslänk. Sätt ditt nya lösenord nedan.</div>` : ""}
           ${cardChevronHeaderHTML("profilePasswordToggle", authRecoveryMode ? "Sätt nytt lösenord" : "Byt lösenord/Logga ut", profilePasswordSectionOpen)}
           ${profilePasswordSectionOpen ? `
@@ -11852,56 +12443,9 @@ function openProfileModal() {
           ` : ""}
         </div>
         <div style="margin-bottom:14px">
-          ${cardChevronHeaderHTML("leaderboardSettingsToggle", "Topplista", leaderboardSettingsSectionOpen)}
-          ${leaderboardSettingsSectionOpen ? `
-            <p style="margin-top:6px;font-size:12px;color:var(--muted);text-align:center">Din placering (t.ex. "bättre än 73%") räknas alltid mot alla som loggat samma personbästa. Det här styr bara om du syns i den namngivna topplistan.</p>
-            <div class="theme-row" style="margin-top:8px">
-              <button class="theme-btn" data-leaderboard-visibility="hidden" style="${leaderboardVisibility === "hidden" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🙈 Dold</button>
-              <button class="theme-btn" data-leaderboard-visibility="anonymous" style="${leaderboardVisibility === "anonymous" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">🎭 Anonym</button>
-              <button class="theme-btn" data-leaderboard-visibility="visible" style="${leaderboardVisibility === "visible" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">👤 Synlig</button>
-            </div>
-            <p style="margin-top:8px;font-size:11px;color:var(--muted2);text-align:center">
-              ${leaderboardVisibility === "hidden" ? "Du syns inte i topplistan för andra." : leaderboardVisibility === "anonymous" ? "Du syns i topplistan, men utan namn." : "Du syns i topplistan med ditt profilnamn."}
-            </p>
-            <p style="margin-top:8px;font-size:11px;color:var(--muted2);text-align:center">Storlek och könsfilter för topplistan väljer du direkt i 🏆 Topplista-knappen under Personbästa.</p>
-          ` : ""}
+          <button class="modal-btn secondary" id="openFriendsBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px">👥 Vänner</button>
         </div>
-        ` : ""}
-        <div style="margin-bottom:14px">
-          ${cardChevronHeaderHTML("profileFramePickerToggle", "Ram runt profilbilden", profileFramePickerExpanded)}
-          ${profileFramePickerExpanded ? `
-          <p style="margin-top:6px;font-size:12px;color:var(--muted);text-align:center">Nya sken låses upp när du levlar upp.</p>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
-            ${(() => {
-              const currentLevel = computeLevelInfo(totalXp()).level;
-              const currentFrame = resolveProfileFrame();
-              return Object.keys(PROFILE_FRAMES).map((key) => {
-                const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
-                const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
-                const isSelected = currentFrame === key;
-                const swatch = profileFrameWrapStyle(key, 2);
-                return `
-                  <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
-                    <button ${isUnlocked ? `data-profile-frame="${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;border-radius:50%;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
-                      <div class="${swatch.className}" style="${swatch.style};width:100%;height:100%;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}">
-                        <div style="width:100%;height:100%;border-radius:50%;background:var(--input-bg)"></div>
-                      </div>
-                    </button>
-                    ${!isUnlocked ? `<span style="font-size:9px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
-                  </div>
-                `;
-              }).join("");
-            })()}
-          </div>
-          <div class="toggle-row" style="margin-top:10px">
-            <span style="font-size:13px;font-weight:600">Visa rörligt sken på Level-Badgen</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="beltBadgeFrameToggle" ${beltBadgeFrameEnabled ? "checked" : ""} />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          ` : ""}
-        </div>
+        ` : ramSectionHTML}
         ${kampsportAdvancedSectionOpen ? `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${beltSectionOpen ? "10px" : "0"}">
           <div class="field-label" style="margin-bottom:0">Dina bälten</div>
@@ -11910,13 +12454,6 @@ function openProfileModal() {
         ${beltSectionOpen ? (() => {
           const highest = highestActiveBeltName();
           const editingTier = BELT_TIERS.find((t) => t.name === editingBeltName);
-          const PROFILE_BELT_IMAGES = {
-            "Vitt bälte": BELT_PROFILE_IMG_WHITE,
-            "Blått bälte": BELT_PROFILE_IMG_BLUE,
-            "Lila bälte": BELT_PROFILE_IMG_PURPLE,
-            "Brunt bälte": BELT_PROFILE_IMG_BROWN,
-            "Svart bälte": BELT_PROFILE_IMG_BLACK,
-          };
           return `
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
               ${BELT_TIERS.slice(0, 5).map((tier) => {
@@ -12022,24 +12559,10 @@ function openProfileModal() {
       reopenProfileModal();
     });
   }
-  const leaderboardToggleBtn = document.getElementById("leaderboardSettingsToggle");
-  if (leaderboardToggleBtn) {
-    leaderboardToggleBtn.addEventListener("click", () => {
-      leaderboardSettingsSectionOpen = !leaderboardSettingsSectionOpen;
-      reopenProfileModal();
-    });
+  const openFriendsBtn = document.getElementById("openFriendsBtn");
+  if (openFriendsBtn) {
+    openFriendsBtn.addEventListener("click", () => openFriendsModal());
   }
-  document.querySelectorAll("[data-leaderboard-visibility]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      leaderboardVisibility = btn.dataset.leaderboardVisibility;
-      saveLeaderboardVisibility();
-      pbRankCache = {};
-      scheduleCloudPush();
-      reopenProfileModal();
-      renderPersonalRecordsCard();
-      loadPbRanks();
-    });
-  });
   const beltBadgeFrameToggle = document.getElementById("beltBadgeFrameToggle");
   if (beltBadgeFrameToggle) {
     beltBadgeFrameToggle.addEventListener("change", (e) => {
