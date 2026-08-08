@@ -260,6 +260,16 @@ const ACTIVITY_LEVELS = [
 ];
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+// Låter Enter i valfritt av angivna input-fält trigga samma knapp som ett
+// klick skulle göra - används för alla "lägg till eget"-fält (övningar,
+// pass, submissions, etc) så man slipper alltid trycka på plus-knappen.
+function wireEnterSubmit(inputIds, btn) {
+  if (!btn) return;
+  inputIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); btn.click(); } });
+  });
+}
 
 function todayISO() {
   const d = new Date();
@@ -5416,11 +5426,10 @@ function personalRecordsCardHTML() {
     <div class="card">
       ${cardChevronHeaderHTML("showPbCardToggle", "🏆 Personbästa", showPbCard, showPbCard ? "10px" : null)}
       ${showPbCard ? (rows.length === 0 ? `<div class="empty">Inga personbästa loggade än — kryssa i "Personbästa!" när du loggar ett gym- eller konditionspass.</div>` : `
+        ${leaderboardOn ? `<button class="modal-btn secondary" id="openPbLeaderboardBtn" style="width:100%;margin-bottom:10px">🏆 Topplista</button>` : ""}
         ${rows.map((row, i) => `
           <div class="goal-row">
-            ${leaderboardOn
-              ? `<button data-open-pb-leaderboard-row="${i}" style="background:none;border:none;padding:0;font-family:inherit;text-align:left;cursor:pointer;color:${tabColors.stats};text-decoration:underline;font-size:14px;font-weight:600">${escapeHtml(row.label)}</button>`
-              : `<span class="goal-label">${escapeHtml(row.label)}</span>`}
+            <span class="goal-label">${escapeHtml(row.label)}</span>
             <span style="text-align:right">
               <span class="goal-value">${row.isTime ? fmtMinSec(row.best) : `${row.best} ${row.unit || "kg"}`}</span>
               <div style="font-size:11px;color:var(--muted2)">${fmtDateShort(row.date)}</div>
@@ -5494,39 +5503,98 @@ async function loadPbRanks() {
 // komma runt genom att peta i klientkoden.
 const ADMIN_USER_ID = "3b74e3f7-45f0-4686-b304-c731045e73b2";
 let pbLeaderboardAdminMode = false;
+// Vilken rad (index i lastPbRows) som är vald i Topplista-modalen, samt en
+// ihågkommen rankKey så att samma övning/distans föreslås igen nästa gång
+// modalen öppnas.
+let pbLeaderboardSelectedIndex = 0;
+let pbLeaderboardLastRankKey = null;
 
-// Full topplista för en enskild övning/distans, öppnas genom att trycka på
-// övningens namn. Visar bara de som aktivt valt "Anonym" eller "Synlig" i
-// Profil > Topplista, i den storlek (topp X) och könsfilter man valt där.
-async function openPbLeaderboardModal(row) {
+// En gemensam Topplista-modal för alla PB - istället för att trycka på varje
+// övning för sig väljer man övning/distans via chips inne i modalen, och kan
+// även justera storlek (topp X) och könsfilter där direkt.
+async function openPbLeaderboardModal() {
+  const rows = lastPbRows || [];
+  if (!rows.length) return;
   pushModalHistoryIfNeeded();
   pbLeaderboardAdminMode = false;
+  const remembered = rows.findIndex((r) => r.rankKey === pbLeaderboardLastRankKey);
+  pbLeaderboardSelectedIndex = remembered >= 0 ? remembered : 0;
+  pbLeaderboardLastRankKey = rows[pbLeaderboardSelectedIndex].rankKey;
+  modalRoot.innerHTML = `<div class="modal-overlay" id="pbLeaderboardOverlay"><div class="modal-sheet" style="min-height:85vh;min-height:85dvh">${pbLeaderboardModalBodyHTML()}</div></div>`;
+  wirePbLeaderboardModal();
+  await renderPbLeaderboardList(lastPbRows[pbLeaderboardSelectedIndex]);
+}
+function pbLeaderboardModalBodyHTML() {
+  const rows = lastPbRows || [];
   const isAdmin = authUser && authUser.id === ADMIN_USER_ID;
-  modalRoot.innerHTML = `
-    <div class="modal-overlay" id="pbLeaderboardOverlay">
-      <div class="modal-sheet">
-        <h2>🏆 Topplista</h2>
-        <div style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:2px">${escapeHtml(row.label)}</div>
-        <div id="pbLeaderboardSubtext" style="text-align:center;font-size:11px;color:var(--muted2);margin-bottom:10px"></div>
-        ${isAdmin ? `<button class="modal-btn secondary" id="pbLeaderboardAdminToggle" style="width:auto;margin:0 auto 10px;display:block;padding:6px 14px;font-size:12px">🛠 Adminvy (alla, inkl. dolda)</button>` : ""}
-        <div id="pbLeaderboardListWrap"><div class="empty">Hämtar…</div></div>
-        <div class="modal-close" id="pbLeaderboardCloseBtn">Stäng</div>
-      </div>
+  return `
+    <h2>🏆 Topplista</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px">
+      ${rows.map((r, i) => `<button class="chip" data-pblb-row="${i}" style="${i === pbLeaderboardSelectedIndex ? `border-color:${tabColors.stats};background:${tabColors.stats}26;color:${tabColors.stats}` : ""}">${escapeHtml(r.label)}</button>`).join("")}
     </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:11px;color:var(--muted2);margin-right:2px">Topp</span>
+      ${[10, 15, 20, 25, 50].map((n) => `<button class="theme-btn" data-pblb-size="${n}" style="padding:4px 10px;font-size:12px;${leaderboardSize === n ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">${n}</button>`).join("")}
+    </div>
+    <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px">
+      <button class="theme-btn" data-pblb-gender="all" style="padding:4px 10px;font-size:12px;${leaderboardGenderFilter === "all" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Alla</button>
+      <button class="theme-btn" data-pblb-gender="man" style="padding:4px 10px;font-size:12px;${leaderboardGenderFilter === "man" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Män</button>
+      <button class="theme-btn" data-pblb-gender="kvinna" style="padding:4px 10px;font-size:12px;${leaderboardGenderFilter === "kvinna" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Kvinnor</button>
+    </div>
+    <div id="pbLeaderboardSubtext" style="text-align:center;font-size:11px;color:var(--muted2);margin-bottom:10px"></div>
+    ${isAdmin ? `<button class="modal-btn secondary" id="pbLeaderboardAdminToggle" style="width:auto;margin:0 auto 10px;display:block;padding:6px 14px;font-size:12px">${pbLeaderboardAdminMode ? "👥 Visa vanlig topplista" : "🛠 Adminvy (alla, inkl. dolda)"}</button>` : ""}
+    <div id="pbLeaderboardListWrap"><div class="empty">Hämtar…</div></div>
+    <div class="modal-close" id="pbLeaderboardCloseBtn">Stäng</div>
   `;
-  document.getElementById("pbLeaderboardCloseBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; });
-  document.getElementById("pbLeaderboardOverlay").addEventListener("click", (e) => {
-    if (e.target.id === "pbLeaderboardOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+}
+function wirePbLeaderboardModal() {
+  const closeBtn = document.getElementById("pbLeaderboardCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", () => { modalRoot.innerHTML = ""; });
+  const overlay = document.getElementById("pbLeaderboardOverlay");
+  if (overlay) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target.id === "pbLeaderboardOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+    });
+  }
+  document.querySelectorAll("[data-pblb-row]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pbLeaderboardSelectedIndex = parseInt(btn.dataset.pblbRow, 10);
+      pbLeaderboardLastRankKey = (lastPbRows[pbLeaderboardSelectedIndex] || {}).rankKey || null;
+      rerenderPbLeaderboardModal();
+    });
+  });
+  document.querySelectorAll("[data-pblb-size]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardSize = parseInt(btn.dataset.pblbSize, 10);
+      saveLeaderboardSize();
+      scheduleCloudPush();
+      rerenderPbLeaderboardModal();
+    });
+  });
+  document.querySelectorAll("[data-pblb-gender]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      leaderboardGenderFilter = btn.dataset.pblbGender;
+      saveLeaderboardGenderFilter();
+      scheduleCloudPush();
+      pbRankCache = {};
+      rerenderPbLeaderboardModal();
+      loadPbRanks();
+    });
   });
   const adminToggleBtn = document.getElementById("pbLeaderboardAdminToggle");
   if (adminToggleBtn) {
     adminToggleBtn.addEventListener("click", () => {
       pbLeaderboardAdminMode = !pbLeaderboardAdminMode;
-      adminToggleBtn.textContent = pbLeaderboardAdminMode ? "👥 Visa vanlig topplista" : "🛠 Adminvy (alla, inkl. dolda)";
-      renderPbLeaderboardList(row);
+      rerenderPbLeaderboardModal();
     });
   }
-  await renderPbLeaderboardList(row);
+}
+function rerenderPbLeaderboardModal() {
+  const sheet = document.querySelector("#pbLeaderboardOverlay .modal-sheet");
+  if (!sheet) return;
+  sheet.innerHTML = pbLeaderboardModalBodyHTML();
+  wirePbLeaderboardModal();
+  renderPbLeaderboardList(lastPbRows[pbLeaderboardSelectedIndex]);
 }
 async function renderPbLeaderboardList(row) {
   const listWrap = document.getElementById("pbLeaderboardListWrap");
@@ -5684,12 +5752,10 @@ function wirePersonalRecordsCardEvents() {
       renderPersonalRecordsCard();
     });
   }
-  document.querySelectorAll("[data-open-pb-leaderboard-row]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const row = lastPbRows[parseInt(btn.dataset.openPbLeaderboardRow, 10)];
-      if (row) openPbLeaderboardModal(row);
-    });
-  });
+  const openLeaderboardBtn = document.getElementById("openPbLeaderboardBtn");
+  if (openLeaderboardBtn) {
+    openLeaderboardBtn.addEventListener("click", () => openPbLeaderboardModal());
+  }
   wirePbHistoryCardEvents();
 }
 
@@ -6317,6 +6383,7 @@ function renderTraning() {
       renderTraning();
       renderPersonalRecordsCard();
     });
+    wireEnterSubmit(["pbValueInput"], pbSaveBtn);
   }
   const konditionPbToggle = document.getElementById("konditionPbSectionToggle");
   if (konditionPbToggle) {
@@ -6358,6 +6425,7 @@ function renderTraning() {
       renderTraning();
       renderPersonalRecordsCard();
     });
+    wireEnterSubmit(["konditionPbValueInput"], konditionPbSaveBtn);
   }
   content.querySelectorAll("[data-submission]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -10642,6 +10710,8 @@ function openBackupModal() {
   renderMacroSettingsList();
   document.getElementById("addEatenPresetBtn").addEventListener("click", () => addPreset("eaten", "newEatenLabel", "newEatenKcal"));
   document.getElementById("addBurnedPresetBtn").addEventListener("click", () => addPreset("burned", "newBurnedLabel", "newBurnedKcal"));
+  wireEnterSubmit(["newEatenLabel", "newEatenKcal", "newEatenProtein", "newEatenFat", "newEatenCarbs"], document.getElementById("addEatenPresetBtn"));
+  wireEnterSubmit(["newBurnedLabel", "newBurnedKcal"], document.getElementById("addBurnedPresetBtn"));
   document.getElementById("exportExcelBtn").addEventListener("click", exportExcel);
   document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
   document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
@@ -10862,6 +10932,7 @@ function renderAdvancedQuestionsList() {
       saveAdvancedQuestions();
       renderAdvancedQuestionsList();
     });
+    wireEnterSubmit(["newQuestionTitle", "newQuestionDesc"], addQBtn);
   }
 }
 
@@ -10944,6 +11015,7 @@ function renderSubmissionTypesList() {
       saveSubmissionTypes();
       renderSubmissionTypesList();
     });
+    wireEnterSubmit(["newSubmissionLabel"], addBtn);
   }
 }
 SETTINGS_LIST_RENDERERS.submissionTypesList = renderSubmissionTypesList;
@@ -11002,6 +11074,7 @@ function renderBodyMeasurementTypesList() {
       saveBodyMeasurementTypes();
       renderBodyMeasurementTypesList();
     });
+    wireEnterSubmit(["newBodyMeasurementLabel"], addBtn);
   }
 }
 SETTINGS_LIST_RENDERERS.bodyMeasurementTypesList = renderBodyMeasurementTypesList;
@@ -11060,6 +11133,7 @@ function renderKonditionPbList() {
       saveKonditionPbDistances();
       renderKonditionPbList();
     });
+    wireEnterSubmit(["newKonditionPbLabel"], addBtn);
   }
 }
 SETTINGS_LIST_RENDERERS.konditionPbList = renderKonditionPbList;
@@ -11129,6 +11203,7 @@ function renderPbExercisesList() {
       savePbExercises();
       renderPbExercisesList();
     });
+    wireEnterSubmit(["newPbExerciseLabel"], addBtn);
   }
 }
 SETTINGS_LIST_RENDERERS.pbExercisesList = renderPbExercisesList;
@@ -11221,6 +11296,9 @@ function renderGymExercisesManagement() {
       saveGymExercises();
       renderGymExercisesManagement();
     });
+    const splitId = btn.dataset.gymexAdd;
+    const input = container.querySelector(`[data-gymex-new="${splitId}"]`);
+    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); btn.click(); } });
   });
 }
 
@@ -11282,6 +11360,7 @@ function renderGymSplitsList() {
       renderGymSplitsList();
       renderGymExercisesManagement();
     });
+    wireEnterSubmit(["newGymSplitText"], addBtn);
   }
 }
 SETTINGS_LIST_RENDERERS.gymSplitsList = renderGymSplitsList;
@@ -11431,6 +11510,8 @@ function openManageCaloriePresetsModal() {
   renderMacroSettingsList();
   document.getElementById("addEatenPresetBtn").addEventListener("click", () => addPreset("eaten", "newEatenLabel", "newEatenKcal"));
   document.getElementById("addBurnedPresetBtn").addEventListener("click", () => addPreset("burned", "newBurnedLabel", "newBurnedKcal"));
+  wireEnterSubmit(["newEatenLabel", "newEatenKcal", "newEatenProtein", "newEatenFat", "newEatenCarbs"], document.getElementById("addEatenPresetBtn"));
+  wireEnterSubmit(["newBurnedLabel", "newBurnedKcal"], document.getElementById("addBurnedPresetBtn"));
   function closeCaloriePresetsModal() {
     modalRoot.innerHTML = "";
     if (activeTab === "kalorier") renderKalorier();
@@ -11782,16 +11863,7 @@ function openProfileModal() {
             <p style="margin-top:8px;font-size:11px;color:var(--muted2);text-align:center">
               ${leaderboardVisibility === "hidden" ? "Du syns inte i topplistan för andra." : leaderboardVisibility === "anonymous" ? "Du syns i topplistan, men utan namn." : "Du syns i topplistan med ditt profilnamn."}
             </p>
-            <div style="margin-top:14px;font-size:13px;font-weight:600;text-align:center">Antal på topplistan</div>
-            <div class="theme-row" style="margin-top:6px">
-              ${[10, 15, 20, 30, 50].map((n) => `<button class="theme-btn" data-leaderboard-size="${n}" style="padding:8px 0;${leaderboardSize === n ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">${n}</button>`).join("")}
-            </div>
-            <div style="margin-top:14px;font-size:13px;font-weight:600;text-align:center">Jämför mig mot</div>
-            <div class="theme-row" style="margin-top:6px">
-              <button class="theme-btn" data-leaderboard-gender="all" style="${leaderboardGenderFilter === "all" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Alla</button>
-              <button class="theme-btn" data-leaderboard-gender="man" style="${leaderboardGenderFilter === "man" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Män</button>
-              <button class="theme-btn" data-leaderboard-gender="kvinna" style="${leaderboardGenderFilter === "kvinna" ? `border-color:${tabColors.stats};color:${tabColors.stats}` : ""}">Kvinnor</button>
-            </div>
+            <p style="margin-top:8px;font-size:11px;color:var(--muted2);text-align:center">Storlek och könsfilter för topplistan väljer du direkt i 🏆 Topplista-knappen under Personbästa.</p>
           ` : ""}
         </div>
         ` : ""}
@@ -11961,25 +12033,6 @@ function openProfileModal() {
     btn.addEventListener("click", () => {
       leaderboardVisibility = btn.dataset.leaderboardVisibility;
       saveLeaderboardVisibility();
-      pbRankCache = {};
-      scheduleCloudPush();
-      reopenProfileModal();
-      renderPersonalRecordsCard();
-      loadPbRanks();
-    });
-  });
-  document.querySelectorAll("[data-leaderboard-size]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      leaderboardSize = parseInt(btn.dataset.leaderboardSize, 10);
-      saveLeaderboardSize();
-      scheduleCloudPush();
-      reopenProfileModal();
-    });
-  });
-  document.querySelectorAll("[data-leaderboard-gender]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      leaderboardGenderFilter = btn.dataset.leaderboardGender;
-      saveLeaderboardGenderFilter();
       pbRankCache = {};
       scheduleCloudPush();
       reopenProfileModal();
@@ -12326,6 +12379,7 @@ function openManageTypesModal() {
     kcalInput.value = "";
     categoryInput.value = "";
   });
+  wireEnterSubmit(["newTypeLabel", "newTypeMinutes", "newTypeKcal"], document.getElementById("addTypeBtn"));
   document.getElementById("typesModalCloseBtn").addEventListener("click", closeTypesModal);
   document.getElementById("typesModalOverlay").addEventListener("click", (e) => {
     if (e.target.id === "typesModalOverlay") { closeTypesModal(); reestablishModalMarkerIfStillOpen(); }
