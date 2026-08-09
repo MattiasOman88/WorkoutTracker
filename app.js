@@ -225,7 +225,9 @@ function playCelebrationChime(kind) {
     const ctx = sharedAudioCtx;
     if (ctx.state === "suspended") ctx.resume();
     const now = ctx.currentTime;
-    const notes = kind === "levelup" ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
+    const notes = kind === "platinum"
+      ? [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568.0]
+      : kind === "levelup" ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -3907,7 +3909,15 @@ const ACHIEVEMENTS = [
     } },
   { id: "black_belt_day", title: "Black belt!", desc: "Grundaren av appen fick sitt svarta bälte 13 juli 2019.", hint: "Black belt day, i juli.", icon: "crown", xp: 3000, badgeImage: BADGE_IMG_BLACK_BELT_DAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "07-13") },
+  { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, secret: true,
+    check: () => isAllAchievementsUnlocked() },
 ];
+// Sant när ALLT annat i ACHIEVEMENTS är upplåst - alltså det absolut sista
+// steget innan platina-prestationen ("platinum_all") själv låses upp.
+// Utesluter medvetet sig själv för att undvika ett paradoxalt självtest.
+function isAllAchievementsUnlocked() {
+  return ACHIEVEMENTS.filter((a) => a.id !== "platinum_all").every((a) => unlockedAchievements.includes(a.id));
+}
 
 /* ---------------- Celebration queue ---------------- */
 
@@ -3935,6 +3945,11 @@ function checkAchievements() {
   if (anyNew) {
     saveUnlockedAchievements();
     saveUnlockedAchievementDates();
+  }
+  if (anyNew && !platinumUnlockedAt && isAllAchievementsUnlocked() && unlockedAchievements.includes("platinum_all")) {
+    platinumUnlockedAt = todayISO();
+    savePlatinumUnlockedAt();
+    celebrationQueue.push({ type: "platinum" });
   }
 
   const autoPrestiged = [];
@@ -4049,6 +4064,21 @@ function showNextCelebration() {
         <div class="celebration-sub">${monthKeyLabel(item.monthKey)} är sammanställd</div>
         <button class="modal-btn primary" id="celebrationMonthRecapBtn">Visa sammanfattning</button>
         <button class="modal-btn secondary" id="celebrationNextBtn" style="margin-top:8px">Senare</button>
+      </div>
+    `;
+  } else if (item.type === "platinum") {
+    overlay.className = "celebration-overlay celebration-overlay-platinum";
+    overlay.innerHTML = `
+      <div class="celebration-card celebration-card-platinum">
+        <div class="platinum-confetti" aria-hidden="true">${Array.from({ length: 24 }).map((_, i) => `<span style="--i:${i}"></span>`).join("")}</div>
+        <div class="celebration-icon platinum-icon-ring" style="color:#EF9F27;border-color:#EF9F27">
+          <span style="width:34px;height:34px;display:flex">${ICONS.crown}</span>
+        </div>
+        <div class="celebration-title">🏆 100%!</div>
+        <div class="celebration-sub">Du har låst upp ALLA prestationer i appen</div>
+        <div class="celebration-achievement">Platina</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">En permanent markering syns nu på din profil. Du kan se det här firandet igen när du vill, från prestationslistan.</div>
+        <button class="modal-btn primary" id="celebrationNextBtn">Fantastiskt!</button>
       </div>
     `;
   } else {
@@ -5025,6 +5055,20 @@ function saveBgUnlockedAchievements() {
 }
 let bgUnlockedAchievements = loadBgUnlockedAchievements();
 
+// Datumet du nådde 100% (alla prestationer upplåsta) - null tills dess.
+// Styr platina-firandet (visas bara en gång, som en riktig milstolpe), den
+// permanenta profilmarkören, och om "se firandet igen"-knappen ska synas.
+function loadPlatinumUnlockedAt() {
+  try { return localStorage.getItem("platinum_unlocked_at_v1") || null; } catch (e) { return null; }
+}
+function savePlatinumUnlockedAt() {
+  try {
+    if (platinumUnlockedAt) localStorage.setItem("platinum_unlocked_at_v1", platinumUnlockedAt);
+    else localStorage.removeItem("platinum_unlocked_at_v1");
+  } catch (e) { /* ignore */ }
+}
+let platinumUnlockedAt = loadPlatinumUnlockedAt();
+
 function loadAchievementPrestige() {
   try {
     const raw = localStorage.getItem("achievement_prestige_v1");
@@ -5390,6 +5434,13 @@ function achievementBadgeHTML(a) {
 }
 
 function wireAchievementsCardEvents() {
+  const replayBtn = document.getElementById("replayPlatinumBtn");
+  if (replayBtn) {
+    replayBtn.addEventListener("click", () => {
+      celebrationQueue.push({ type: "platinum" });
+      if (!document.getElementById("celebrationOverlay")) showNextCelebration();
+    });
+  }
   const btn = document.getElementById("achievementsExpandBtn");
   if (btn) {
     btn.addEventListener("click", () => {
@@ -5701,6 +5752,16 @@ function achievementsCardHTML() {
           <button id="achievementsExpandBtn" style="background:none;border:none;color:${tabColors.stats};font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;padding:4px">${achievementsExpanded ? "Dölj" : "Visa alla"}</button>
         </div>
       </div>
+      ${platinumUnlockedAt ? `
+      <div style="display:flex;align-items:center;gap:10px;background:rgba(239,159,39,0.1);border:1px solid rgba(239,159,39,0.35);border-radius:10px;padding:8px 10px;margin-bottom:10px">
+        <span style="font-size:18px;line-height:1">🏆</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:700;color:#EF9F27">Platina — alla prestationer klara</div>
+          <div style="font-size:11px;color:var(--muted2)">${fmtDateWithWeekday(platinumUnlockedAt)}</div>
+        </div>
+        <button id="replayPlatinumBtn" style="background:none;border:1px solid rgba(239,159,39,0.4);color:#EF9F27;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:5px 9px;border-radius:8px;flex-shrink:0">▶ Se igen</button>
+      </div>
+      ` : ""}
       ${nearCompletion.length ? `
         <div style="font-size:14.5px;font-weight:700;color:var(--text);margin-bottom:10px">🎯 Nära att slutföras</div>
         <div style="display:flex;flex-wrap:wrap;gap:14px 8px;justify-content:flex-start;margin-bottom:4px">
@@ -12850,6 +12911,7 @@ function openProfileModal() {
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px">
           <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
             || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
+          ${platinumUnlockedAt ? `<div style="display:flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</div>` : ""}
           <div style="display:flex;gap:8px">
             <button class="modal-btn secondary" id="profileAvatarUploadBtn" style="padding:6px 14px;font-size:12.5px;width:auto">${profile.avatar ? "Byt bild" : "Ladda upp bild"}</button>
             ${profile.avatar ? `<button class="delete-btn" id="profileAvatarRemoveBtn" style="padding:6px 10px">${ICONS.trash}</button>` : ""}

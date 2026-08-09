@@ -543,6 +543,26 @@
   .celebration-sub { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
   .celebration-achievement { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
   .celebration-xp { font-size: 15px; font-weight: 800; margin-bottom: 16px; }
+  /* Platina-firandet: större, guldigare, med fallande konfetti - ska kännas
+     som en riktig milstolpe jämfört med en vanlig prestations-popup. */
+  .celebration-card-platinum {
+    position: relative; overflow: hidden; max-width: 320px;
+    border-color: rgba(239,159,39,0.5);
+    box-shadow: 0 12px 50px rgba(239,159,39,0.25);
+  }
+  .platinum-icon-ring { animation: avatarFramePulse 1.3s ease-in-out infinite; }
+  .platinum-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .platinum-confetti span {
+    position: absolute; top: -10%; left: calc(var(--i) * 4.3%);
+    width: 6px; height: 10px;
+    background: hsl(calc(var(--i) * 35deg) 80% 55%);
+    animation: platinumConfettiFall 2.6s linear infinite;
+    animation-delay: calc(var(--i) * -0.11s);
+  }
+  @keyframes platinumConfettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(340px) rotate(540deg); opacity: 0; }
+  }
   .modal-sheet { overflow-x: hidden; }
   .undo-toast {
     position: fixed; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
