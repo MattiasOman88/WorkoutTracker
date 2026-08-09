@@ -1861,6 +1861,39 @@ function finishGymSession(minutes) {
   return totalVolume;
 }
 
+// Avbryter ett pausat/pågående gympass helt utan att logga det - används från
+// bekräftelsemodalen nedan, inte från "Avsluta pass"-flödet (som alltid loggar).
+function discardActiveGymSession() {
+  activeGymSession = null;
+  saveActiveGymSession();
+  gymSessionViewOpen = false;
+}
+function openCancelGymSessionModal() {
+  pushModalHistoryIfNeeded();
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="cancelGymSessionOverlay">
+      <div class="modal-sheet">
+        <h2 style="text-align:center">Avbryta pågående pass?</h2>
+        <p style="text-align:center">Är du säker på att du vill avbryta pågående pass utan att det loggas?</p>
+        <div class="row">
+          <button class="modal-btn secondary" id="cancelGymSessionBackBtn" style="flex:1">Nej, fortsätt</button>
+          <button class="modal-btn primary" id="cancelGymSessionConfirmBtn" style="flex:1">Ja, avbryt</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("cancelGymSessionBackBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; handleModalClosedByUser(); });
+  document.getElementById("cancelGymSessionOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "cancelGymSessionOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+  document.getElementById("cancelGymSessionConfirmBtn").addEventListener("click", () => {
+    discardActiveGymSession();
+    modalRoot.innerHTML = "";
+    handleModalClosedByUser();
+    if (activeTab === "traning") renderTraning();
+  });
+}
+
 /* ---------------- Nav ---------------- */
 
 const EMBLEM_ICON_VIKT = "badges/EMBLEM_ICON_VIKT.png";
@@ -1994,7 +2027,8 @@ function renderNav() {
     let iconHTML;
     if (isActive && isEffect) {
       const frame = profileFrameWrapStyle(color, 1);
-      iconHTML = `<div class="${frame.className}" style="width:${outerSize}px;height:${outerSize}px;${frame.style}"><img src="${emblemSrc}" alt="${t.label}" style="width:${innerSize}px;height:${innerSize}px;object-fit:contain;display:block" /></div>`;
+      const cycleAttrs = color === "allaMinaRamar" ? ` data-cycle-all="1" data-cycle-padding="1" data-cycle-shape="circle"` : "";
+      iconHTML = `<div class="${frame.className}" style="width:${outerSize}px;height:${outerSize}px;${frame.style}"${cycleAttrs}><img src="${emblemSrc}" alt="${t.label}" style="width:${innerSize}px;height:${innerSize}px;object-fit:contain;display:block" /></div>`;
     } else {
       iconHTML = `<img src="${emblemSrc}" alt="${t.label}" style="width:${outerSize}px;height:${outerSize}px;object-fit:contain;display:block;flex-shrink:0;${isActive ? `filter:drop-shadow(0 0 4px ${color});` : "opacity:0.65;"}" />`;
     }
@@ -6292,10 +6326,13 @@ function friendsModalBodyHTML() {
         <span class="toggle-slider"></span>
       </label>
     </div>
-    <p style="margin-top:6px;font-size:11px;color:var(--muted2);text-align:center">Ditt ID: <strong>#${authUser ? shortSocialId(authUser.id) : ""}</strong> — dela det om flera har samma namn som du.</p>
+    <p style="margin-top:6px;font-size:11px;color:var(--muted2);text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">
+      <span>Ditt ID: <strong>#${authUser ? shortSocialId(authUser.id) : ""}</strong> — dela det om flera har samma namn som du.</span>
+      ${authUser ? `<button id="copySocialIdBtn" style="background:none;border:1px solid var(--border2);border-radius:6px;padding:2px 7px;font-size:10px;color:var(--muted2);cursor:pointer">Kopiera</button>` : ""}
+    </p>
 
     <div style="margin-top:12px;display:flex;gap:8px">
-      <input type="text" id="friendSearchInput" placeholder="Sök på profilnamn…" value="${escapeHtml(friendSearchQuery)}" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit" />
+      <input type="text" id="friendSearchInput" placeholder="Sök på namn, ID eller mejl…" value="${escapeHtml(friendSearchQuery)}" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit" />
       <button class="modal-btn primary" id="friendSearchBtn" style="width:auto;padding:9px 14px;flex-shrink:0">Sök</button>
     </div>
     <div id="friendSearchResultsWrap" style="margin-top:6px">${friendSearchResultsHTML()}</div>
@@ -6364,6 +6401,20 @@ function wireFriendsModal() {
   wireEnterSubmit(["friendSearchInput"], searchBtn);
   if (searchInput) {
     searchInput.addEventListener("input", (e) => { friendSearchQuery = e.target.value; });
+  }
+  const copySocialIdBtn = document.getElementById("copySocialIdBtn");
+  if (copySocialIdBtn) {
+    copySocialIdBtn.addEventListener("click", async () => {
+      const id = authUser ? shortSocialId(authUser.id) : "";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText("#" + id);
+        }
+        showInfoToast("ID kopierat!");
+      } catch (e) {
+        showInfoToast("Kunde inte kopiera - ditt ID är #" + id);
+      }
+    });
   }
   document.querySelectorAll("[data-friend-add]").forEach((btn) => {
     btn.addEventListener("click", () => sendFriendRequestTo(btn.dataset.friendAdd));
@@ -6966,12 +7017,15 @@ function renderTraning() {
   content.innerHTML = `
     ${activeGymSession ? `
     <div class="card" style="background:${tabColors.traning}1A;border-color:${tabColors.traning}">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
           <div style="font-weight:700;font-size:14px">⏸️ Pass pausat</div>
           <div style="font-size:12.5px;color:var(--muted)">${escapeHtml((gymSplits.find((g) => g.id === activeGymSession.splitId) || {}).text || "")}</div>
         </div>
-        <button class="modal-btn primary" id="resumeGymSessionBtn" style="width:auto;padding:9px 16px">▶️ Fortsätt</button>
+        <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px">
+          <button class="modal-btn primary" id="resumeGymSessionBtn" style="width:auto;padding:9px 16px">▶️ Fortsätt</button>
+          <button id="cancelGymSessionBtn" style="background:none;border:none;padding:2px;cursor:pointer;font-size:11px;color:var(--muted2);text-decoration:underline">Avbryt passet</button>
+        </div>
       </div>
     </div>
     ` : ""}
@@ -7222,6 +7276,10 @@ function renderTraning() {
       gymSessionViewOpen = true;
       renderTraning();
     });
+  }
+  const cancelGymSessionBtn = document.getElementById("cancelGymSessionBtn");
+  if (cancelGymSessionBtn) {
+    cancelGymSessionBtn.addEventListener("click", () => { openCancelGymSessionModal(); });
   }
   const pbToggle = document.getElementById("pbSectionToggle");
   if (pbToggle) {
@@ -12894,7 +12952,9 @@ function openProfileModal() {
       ${(() => {
         const currentLevel = computeLevelInfo(totalXp()).level;
         const cycleUnlocked = currentLevel >= (PROFILE_FRAME_UNLOCK_LEVEL.allaMinaRamar || 999) || debugForceUnlockCosmetics;
-        if (!cycleUnlocked) return "";
+        // Bara relevant att visa urvalslistan när "Alla mina ramar" faktiskt
+        // är den valda ramen just nu - annars är den bara i vägen.
+        if (!cycleUnlocked || resolveProfileFrame() !== "allaMinaRamar") return "";
         return `
         <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
           <p style="font-size:12px;font-weight:600;margin-bottom:6px">Vilka ska "Alla mina ramar" cykla mellan?</p>
@@ -13181,8 +13241,16 @@ function openProfileModal() {
   modalRoot.querySelectorAll("[data-profile-frame]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const key = btn.dataset.profileFrame;
+      const cycleAllInvolved = key === "allaMinaRamar" || profile.frame === "allaMinaRamar";
       profile.frame = profile.frame === key ? null : key;
       saveProfile();
+      if (cycleAllInvolved) {
+        // "Alla mina ramar" har en egen urvalslista som bara ska synas när
+        // den faktiskt är vald - kräver en full omritning för att dyka
+        // upp/försvinna, inte bara punktuppdateringarna nedan.
+        reopenProfileModal();
+        return;
+      }
       renderProfileAvatarWrap();
       updateProfileFrameSwatchSelection();
       renderLevelHeroCard();
