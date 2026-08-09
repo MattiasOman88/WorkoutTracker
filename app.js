@@ -3909,14 +3909,36 @@ const ACHIEVEMENTS = [
     } },
   { id: "black_belt_day", title: "Black belt!", desc: "Grundaren av appen fick sitt svarta bälte 13 juli 2019.", hint: "Black belt day, i juli.", icon: "crown", xp: 3000, badgeImage: BADGE_IMG_BLACK_BELT_DAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "07-13") },
+
+  /* ---------------- New Game+ (efter Platina) ----------------
+     Några exempel-prestationer till att börja med - redigera/lägg till
+     fler i samma stil. Ett steg tuffare än det tidigare toppmålet i samma
+     kategori, prestige:true precis som befintliga (samma mål upprepas
+     oändligt när man klarar det igen, ingen växande svårighet). Flaggade
+     newGamePlus:true så de INTE räknas med i platina-kravet (annars hade
+     platina blivit omöjligt att nå - se isAllAchievementsUnlocked nedan). */
+  { id: "ngp_total_1500", title: "1500 pass", desc: "Loggat 1500 träningspass totalt.", icon: "sparkles", xp: 25000, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isTraining).length >= 1500,
+    progress: () => ({ current: workoutEntries.filter(isTraining).length, target: 1500 }) },
+  { id: "ngp_year_500", title: "500 pass under ett år", desc: "Tränat 500 pass under ett och samma år.", icon: "sparkles", xp: 25000, prestige: true, newGamePlus: true,
+    check: () => trainingCountInYear(new Date().getFullYear()) >= 500,
+    progress: () => ({ current: trainingCountInYear(new Date().getFullYear()), target: 500 }) },
+  { id: "ngp_cardio_200", title: "200 konditionspass", desc: "Loggat 200 konditionspass totalt.", icon: "sparkles", xp: 8000, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isCardio).length >= 200,
+    progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 200 }) },
+  { id: "ngp_weight_18months", title: "18 månader", desc: "Loggat vikt 548 dagar i följd.", icon: "sparkles", xp: 22000, prestige: true, newGamePlus: true,
+    check: () => longestConsecutiveRun(weightEntries.map((e) => e.date)) >= 548,
+    progress: () => ({ current: longestConsecutiveRun(weightEntries.map((e) => e.date)), target: 548 }) },
+
   { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, secret: true,
     check: () => isAllAchievementsUnlocked() },
 ];
 // Sant när ALLT annat i ACHIEVEMENTS är upplåst - alltså det absolut sista
 // steget innan platina-prestationen ("platinum_all") själv låses upp.
-// Utesluter medvetet sig själv för att undvika ett paradoxalt självtest.
+// Utesluter medvetet sig själv (paradox) och alla newGamePlus-flaggade
+// prestationer (annars vore platina omöjligt - de är TÄNKTA att komma efter).
 function isAllAchievementsUnlocked() {
-  return ACHIEVEMENTS.filter((a) => a.id !== "platinum_all").every((a) => unlockedAchievements.includes(a.id));
+  return ACHIEVEMENTS.filter((a) => a.id !== "platinum_all" && !a.newGamePlus).every((a) => unlockedAchievements.includes(a.id));
 }
 
 /* ---------------- Celebration queue ---------------- */
@@ -5035,6 +5057,7 @@ const ACHIEVEMENT_CATEGORIES = [
   { label: "Submissions", ids: ["submission_first", "choke_wizard", "armbar_wizard", "leglock_lunatic", "twister_twister", "choke_combo", "armbar_combo", "leg_combo", "triple_threat", "choke_combo_5", "armbar_combo_5", "leg_combo_5", "triple_threat_3", "triple_threat_5", "submission_one_of_each"] },
   { label: "Submission-bingo", ids: ["bingo_line", "bingo_corners", "bingo_x", "bingo_ring", "bingo_2lines", "bingo_3lines", "bingo_full", "bingo_2lines_5", "bingo_corners_5", "bingo_x_5", "bingo_full_5", "bingo_3lines_5", "bingo_corners_10", "bingo_x_10", "bingo_full_10"] },
   { label: "Övriga", ids: ["variety", "variety_2", "allround", "calorie_week", "calorie_30", "weekend_warrior", "weekend_warrior_10", "fredagsmys", "fredagsmys_2", "lordagsgodis", "lordagsgodis_2", "advanced_evaluation", "summer_warrior", "winter_warrior", "extreme_consistency", "marathon_trainer", "fartdaren", "fartcyklisten"] },
+  { label: "New Game+", ids: ["ngp_total_1500", "ngp_year_500", "ngp_cardio_200", "ngp_weight_18months"] },
   { label: "Hemliga", ids: ACHIEVEMENTS.filter((a) => a.secret).map((a) => a.id) },
 ];
 
