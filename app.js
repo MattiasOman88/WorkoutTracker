@@ -10721,7 +10721,7 @@ function accountStatusCardHTML() {
         <input type="text" id="authEmailInput" placeholder="E-post" autocomplete="email" inputmode="email" style="${inputStyle}" />
         <input type="password" id="authPasswordInput" placeholder="Lösenord (minst 6 tecken)" autocomplete="${authFormMode === "signup" ? "new-password" : "current-password"}" style="${inputStyle}" />
         <button class="modal-btn primary" id="authSubmitBtn" ${authFormBusy ? "disabled" : ""}>${authFormMode === "signup" ? "Skapa konto" : "Logga in"}</button>
-        ${authFormMode === "login" ? `<button class="modal-close" id="forgotPasswordBtn" style="padding:2px">Glömt lösenord?</button>` : ""}
+        ${authFormMode === "login" ? `<button type="button" id="forgotPasswordBtn" style="background:none;border:none;padding:4px;font-family:inherit;cursor:pointer;font-size:12.5px;color:${tabColors.stats};text-decoration:underline;text-align:center;width:100%">Glömt lösenord?</button>` : ""}
         <div id="accountStatus" class="status-msg ${authFormError.startsWith("Om kontot finns") || authFormError.startsWith("Konto skapat") ? "ok" : "err"}" style="display:${authFormError ? "block" : "none"}">${escapeHtml(authFormError)}</div>
       `}
     `;
