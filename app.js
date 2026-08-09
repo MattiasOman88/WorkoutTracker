@@ -11004,6 +11004,7 @@ function openBackupModal() {
   modalRoot.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal-sheet">
+        <button id="settingsModalBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
         ${accountStatusCardHTML()}
 
         <h2>Inställningar</h2>
@@ -11687,8 +11688,19 @@ function openBackupModal() {
       });
       saveUnlockedAchievements();
       saveUnlockedAchievementDates();
+      // Debug-massupplåsningen kringgår den vanliga checkAchievements()-slingan
+      // (den hoppar bara över redan upplåsta prestationer, så "anyNew" hade
+      // aldrig blivit true här) - därför måste platina-logiken köras separat
+      // så att markeringen faktiskt sätts och firandet visas, precis som vid
+      // en riktig upplåsning.
+      if (!platinumUnlockedAt && isAllAchievementsUnlocked() && unlockedAchievements.includes("platinum_all")) {
+        platinumUnlockedAt = todayISO();
+        savePlatinumUnlockedAt();
+        celebrationQueue.push({ type: "platinum" });
+      }
       renderDebugAchievementsList();
       if (activeTab === "stats") renderStats(); else render();
+      if (!document.getElementById("celebrationOverlay")) showNextCelebration();
       showModalStatus(`Alla ${ACHIEVEMENTS.length} prestationer upplåsta (debug).`, "ok");
     });
     document.getElementById("debugLockAllBtn").addEventListener("click", () => {
@@ -11696,6 +11708,9 @@ function openBackupModal() {
       unlockedAchievementDates = {};
       saveUnlockedAchievements();
       saveUnlockedAchievementDates();
+      // Nollställ även platina-markören så 100%-firandet kan testas om.
+      platinumUnlockedAt = null;
+      savePlatinumUnlockedAt();
       renderDebugAchievementsList();
       if (activeTab === "stats") renderStats(); else render();
       showModalStatus("Alla prestationer låsta igen (debug).", "ok");
@@ -11756,6 +11771,7 @@ function openBackupModal() {
   document.getElementById("exportSettingsBtn").addEventListener("click", exportSettingsBackup);
   document.getElementById("importBtn").addEventListener("click", () => importFileInput.click());
   document.getElementById("modalCloseBtn").addEventListener("click", closeBackupModal);
+  document.getElementById("settingsModalBackBtn").addEventListener("click", closeBackupModal);
   document.getElementById("modalOverlay").addEventListener("click", (e) => {
     if (e.target.id === "modalOverlay") { closeBackupModal(); handleModalClosedByUser(); }
   });
@@ -13244,6 +13260,10 @@ function openProfileModal() {
       const cycleAllInvolved = key === "allaMinaRamar" || profile.frame === "allaMinaRamar";
       profile.frame = profile.frame === key ? null : key;
       saveProfile();
+      // Flikikonerna (nedre navigeringen) ritas inte om av resten av denna
+      // modal, så utan detta anrop syns den nya ramen där först efter att
+      // man bytt flik manuellt.
+      renderNav();
       if (cycleAllInvolved) {
         // "Alla mina ramar" har en egen urvalslista som bara ska synas när
         // den faktiskt är vald - kräver en full omritning för att dyka
