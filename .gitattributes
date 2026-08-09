@@ -1,0 +1,12 @@
+# Normalisera radbrytningar till LF i repot, oavsett vilket OS/editor som
+# checkar ut eller committar filerna - undviker att git visar hela filer
+# som "ändrade" bara pga CRLF/LF-skillnader (Windows vs andra system).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
