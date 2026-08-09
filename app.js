@@ -6188,7 +6188,7 @@ function friendRowHTML(f) {
     <button data-open-friend="${escapeHtml(f.user_id)}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:8px 0;font-family:inherit;cursor:pointer;text-align:left;border-bottom:1px solid var(--border)">
       <span style="display:flex;align-items:center;gap:10px;min-width:0">
         ${friendAvatarHTML(f.avatar, f.frame, 36, 2)}
-        <span style="font-size:14px;font-weight:600;color:var(--text)">${escapeHtml(f.display_name || "Okänd")} <span style="font-size:11px;font-weight:400;color:var(--muted2)">#${shortSocialId(f.user_id)}</span></span>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">${escapeHtml(f.display_name || "Okänd")}${f.platinum_unlocked_at ? ` <span title="Platina — alla prestationer klara">🏆</span>` : ""} <span style="font-size:11px;font-weight:400;color:var(--muted2)">#${shortSocialId(f.user_id)}</span></span>
       </span>
       <span style="font-size:12px;color:var(--muted2);flex-shrink:0">Nivå ${f.level}</span>
     </button>
@@ -6445,6 +6445,7 @@ async function openFriendProfileModal(friend) {
         <button id="friendProfileBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
         <div style="display:flex;justify-content:center;margin-bottom:8px">${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
         <h2 style="text-align:center">${escapeHtml(friend.display_name || "Okänd")} <span style="font-size:13px;font-weight:400;color:var(--muted2)">#${shortSocialId(friend.user_id)}</span></h2>
+        ${friend.platinum_unlocked_at ? `<div style="display:flex;justify-content:center;margin-top:2px"><span style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</span></div>` : ""}
         ${friendGroups.length ? `
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px">
           <span style="font-size:12px;color:var(--muted2)">Grupp:</span>
@@ -10320,6 +10321,7 @@ async function pushSocialProfileToCloud() {
     current_streak: computeStreak(),
     belt_dates: profile.beltDates || {},
     searchable: socialSearchable,
+    platinum_unlocked_at: platinumUnlockedAt ? new Date(platinumUnlockedAt).toISOString() : null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
   if (error) throw error;
