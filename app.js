@@ -2289,6 +2289,7 @@ function renderVikt() {
 
   document.getElementById("manageWeightBtn").addEventListener("click", openManageWeightModal);
   document.getElementById("weightSubmit").addEventListener("click", () => {
+    if (!requireAuth("Du behöver ett konto för att logga vikt.")) return;
     const date = document.getElementById("weightDate").value;
     const raw = document.getElementById("weightValue").value;
     const num = parseFloat(String(raw).replace(",", "."));
@@ -7181,6 +7182,7 @@ function renderTraning() {
   }
 
   document.getElementById("workoutSubmit").addEventListener("click", () => {
+    if (!requireAuth("Du behöver ett konto för att logga träningspass.")) return;
     const date = workoutFormState.date;
     const minutesInputEl = document.getElementById("workoutMinutes");
     const num = isHealthType ? 0 : parseInt(minutesInputEl ? minutesInputEl.value : "", 10);
@@ -10688,6 +10690,39 @@ function openKampsportWelcomeBackModal(result) {
   });
   document.getElementById("kampsportWelcomeBackOverlay").addEventListener("click", (e) => {
     if (e.target.id === "kampsportWelcomeBackOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+}
+
+// Spärr för inloggningskrävande handlingar (logga pass, logga vikt, m.m.).
+// Anropas i toppen av ett submit-flöde: return om requireAuth(...) är false.
+// Vid utloggat läge visas en modal som leder vidare till Inställningar.
+function requireAuth(promptText) {
+  if (authUser) return true;
+  openLoginRequiredModal(promptText);
+  return false;
+}
+
+function openLoginRequiredModal(promptText) {
+  pushModalHistoryIfNeeded();
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="loginRequiredOverlay">
+      <div class="modal-sheet" style="text-align:center">
+        <div style="font-size:36px">🔒</div>
+        <h2>Logga in för att fortsätta</h2>
+        <p>${escapeHtml(promptText)}</p>
+        <button class="modal-btn primary" id="loginRequiredGoBtn" style="width:100%">Logga in / Skapa konto</button>
+        <div class="modal-close" id="loginRequiredCloseBtn">Avbryt</div>
+      </div>
+    </div>
+  `;
+  document.getElementById("loginRequiredGoBtn").addEventListener("click", () => {
+    modalRoot.innerHTML = "";
+    handleModalClosedByUser();
+    openBackupModal();
+  });
+  document.getElementById("loginRequiredCloseBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; });
+  document.getElementById("loginRequiredOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "loginRequiredOverlay") modalRoot.innerHTML = "";
   });
 }
 
