@@ -410,9 +410,9 @@ function hexToRgba(hex, alpha) {
 const PROFILE_FRAMES = {
   cometGold: { label: "Komet — guld", type: "comet", color: "#FFD24C" },
   cometGreen: { label: "Komet — grön", type: "comet", color: "#34D97B" },
+  pulseRed: { label: "Pulserande röd", type: "pulse", color: "#E24B4A" },
   cometPurple: { label: "Komet — lila", type: "comet", color: "#9B6BFF" },
   cometPink: { label: "Komet — rosa", type: "comet", color: "#FF3DB0" },
-  pulseRed: { label: "Pulserande röd", type: "pulse", color: "#E24B4A" },
   fireRing: { label: "Eld-ring", type: "fire" },
   frostRing: { label: "Frost-ring", type: "frost" },
   sonarRainbow: { label: "Sonar-puls", type: "sonarRainbow" },
@@ -422,14 +422,25 @@ const PROFILE_FRAMES = {
   dualComet: { label: "Dubbelkomet", type: "dualComet", color: "#FF4D4D" },
   dualCometRainbow: { label: "Dubbelkomet — RGB", type: "dualCometRainbow" },
   rainbow: { label: "RGB-ring", type: "rainbow" },
-  aurora: { label: "Norrsken", type: "aurora" },
+  cometJaktLilaRosa: { label: "Komet-jakt — lila/rosa", type: "jaktChase", color: "#FF3DB0", color2: "#9B6BFF" },
+  diamantJakt: { label: "Diamant-jakt", type: "jaktChase", color: "#96D2FF", color2: "#DCF0FF" },
+  silverGuldDiamant: { label: "Silver → guld → diamant", type: "fullShift" },
+  eldringJakt: { label: "Eldring-jakt", type: "jaktChase", color: "#E24B4A", color2: "#EF9F27" },
+  frostringJakt: { label: "Frostring-jakt", type: "jaktChase", color: "#2DE0FF", color2: "#C8F0FF" },
+  eldFrostCombo: { label: "Eld (långsam) + Frost (snabb)", type: "eldFrostCombo" },
+  allaMinaRamar: { label: "Alla mina ramar", type: "cycleAll" },
 };
+// Nivå 1-50 är de befintliga effekterna, de fem första bara 1 steg isär så de
+// känns som ett tidigt matchande set (pulserande röd flyttad hit istället för
+// att bryta av mitt i, den passade inte lika bra bland eld/frost-paret).
+// Nivå 55+ är de nya "premium"-ramarna, var 5:e nivå, med "alla mina ramar"
+// som absolut sista/mest prestigefyllda.
 const PROFILE_FRAME_UNLOCK_LEVEL = {
-  cometGold: 1,
-  cometGreen: 5, cometPurple: 10, cometPink: 15,
-  pulseRed: 20, fireRing: 25, frostRing: 30,
-  sonarRainbow: 35, glitterRainbow: 40, chaseDotsRainbow: 45, chaseDotsRainbow5: 50,
-  dualComet: 55, dualCometRainbow: 60, rainbow: 65, aurora: 70,
+  cometGold: 1, cometGreen: 2, pulseRed: 3, cometPurple: 4, cometPink: 5,
+  fireRing: 10, frostRing: 15, sonarRainbow: 20, glitterRainbow: 25,
+  chaseDotsRainbow: 30, chaseDotsRainbow5: 35, dualComet: 40, dualCometRainbow: 45, rainbow: 50,
+  cometJaktLilaRosa: 55, diamantJakt: 60, silverGuldDiamant: 65,
+  eldringJakt: 70, frostringJakt: 75, eldFrostCombo: 80, allaMinaRamar: 85,
 };
 // Migrering av äldre/borttagna nycklar till sina närmaste nya motsvarigheter,
 // så ingen tappar sitt val bara för att katalogen ändrats.
@@ -438,6 +449,7 @@ const PROFILE_FRAME_KEY_MIGRATIONS = {
   sonarGreen: "sonarRainbow", glitterGold: "glitterRainbow", chaseDots: "chaseDotsRainbow",
   cometCyan: "frostRing", dashRing: "glitterRainbow", glitchTail: "cometGold",
   white: "cometGold", yellow: "cometGold", blue: "frostRing", green: "cometGreen", red: "pulseRed", purple: "cometPurple",
+  aurora: "rainbow",
 };
 // null/ogiltigt val faller alltid tillbaka på "cometGold" - den är alltid upplåst.
 function resolveProfileFrame() {
@@ -469,7 +481,12 @@ function profileFrameWrapStyle(frameKey, padding, shape) {
   if (f.type === "glitter") return { className: "avatar-frame-glitter" + shapeClass, style: `${base};--glitter-c:${f.color}` };
   if (f.type === "chaseRainbow") return { className: "avatar-frame-chase-rainbow" + shapeClass, style: base };
   if (f.type === "chaseRainbow5") return { className: "avatar-frame-chase-rainbow5" + shapeClass, style: base };
-  if (f.type === "aurora") return { className: "avatar-frame-aurora" + shapeClass, style: base };
+  if (f.type === "jaktChase") {
+    return { className: "avatar-frame-jaktchase" + shapeClass, style: `${base};--jakt-c1:${hexToRgba(f.color, 0.9)};--jakt-c2:${hexToRgba(f.color2 || f.color, 0.5)}` };
+  }
+  if (f.type === "fullShift") return { className: "avatar-frame-fullshift" + shapeClass, style: base };
+  if (f.type === "eldFrostCombo") return { className: "avatar-frame-eldfrostcombo" + shapeClass, style: base };
+  if (f.type === "cycleAll") return { className: "avatar-frame-cycleall" + shapeClass, style: base };
   return { className: "" + (isOctagon ? "frame-shape-octagon" : ""), style: `${base};background:${f.color};${isOctagon ? `filter:drop-shadow(0 0 5px ${f.glow})` : `box-shadow:0 0 10px ${f.glow}`}` };
 }
 // Representativ hex-färg för en ram/effekt, används t.ex. för att tona
@@ -479,9 +496,10 @@ function frameAccentColor(frameKey) {
   const f = PROFILE_FRAMES[frameKey];
   if (!f) return "#8080FF";
   if (f.color) return f.color;
-  if (f.type === "rainbow" || f.type === "dualCometRainbow" || f.type === "sonarRainbow" || f.type === "chaseRainbow" || f.type === "chaseRainbow5" || f.type === "aurora") return "#FF3DB0";
-  if (f.type === "fire") return "#E24B4A";
+  if (f.type === "rainbow" || f.type === "dualCometRainbow" || f.type === "sonarRainbow" || f.type === "chaseRainbow" || f.type === "chaseRainbow5" || f.type === "cycleAll") return "#FF3DB0";
+  if (f.type === "fire" || f.type === "eldFrostCombo") return "#E24B4A";
   if (f.type === "frost") return "#2DE0FF";
+  if (f.type === "fullShift") return "#EF9F27";
   return "#8080FF";
 }
 // Färdig <div><img></div>-HTML för profilbilden med aktuell ram, i valfri
@@ -489,8 +507,10 @@ function frameAccentColor(frameKey) {
 // sin egen platshållare istället).
 function profileAvatarHTML(size, padding) {
   if (!profile.avatar) return null;
-  const frame = profileFrameWrapStyle(resolveProfileFrame(), padding);
-  return `<div class="${frame.className}" style="${frame.style}"><img src="${profile.avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" /></div>`;
+  const frameKey = resolveProfileFrame();
+  const frame = profileFrameWrapStyle(frameKey, padding);
+  const cycleAttrs = frameKey === "allaMinaRamar" ? ` data-cycle-all="1" data-cycle-padding="${padding}" data-cycle-shape="circle"` : "";
+  return `<div class="${frame.className}" style="${frame.style}"${cycleAttrs}><img src="${profile.avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" /></div>`;
 }
 // De 10 animerade "special"-effekterna - delas mellan profilramen och
 // Flikfärgens glow-väljare. De vanliga solida färgerna väljs som vanligt via
@@ -499,8 +519,66 @@ const FRAME_EFFECT_KEYS = [
   "cometGold", "cometGreen", "cometPurple", "cometPink",
   "pulseRed", "fireRing", "frostRing",
   "sonarRainbow", "glitterRainbow", "chaseDotsRainbow", "chaseDotsRainbow5",
-  "dualComet", "dualCometRainbow", "rainbow", "aurora",
+  "dualComet", "dualCometRainbow", "rainbow",
+  "cometJaktLilaRosa", "diamantJakt", "silverGuldDiamant", "eldringJakt", "frostringJakt", "eldFrostCombo", "allaMinaRamar",
 ];
+// "Alla mina ramar" - cyklar genom ett fritt urval av tidigare upplåsta ramar
+// (inget min/max - allt från 1 till alla). profile.cycleFrameKeys sparar
+// urvalet; null/tom lista = alla upplåsta (utom cykel-ramen själv) som
+// standard. Elementen hittas via MutationObserver istället för att ropas
+// upp manuellt vid varje render-ställe - av.avatar-frame-cycleall kan dyka
+// upp i profilbilden, bälte-badgen, m.fl. olika vyer.
+const cycleAllTracked = new Map();
+function getCycleAllFrameKeys() {
+  const currentLevel = computeLevelInfo(totalXp()).level;
+  const unlockedKeys = Object.keys(PROFILE_FRAMES).filter((k) =>
+    k !== "allaMinaRamar" && (currentLevel >= (PROFILE_FRAME_UNLOCK_LEVEL[k] || 1) || debugForceUnlockCosmetics));
+  if (Array.isArray(profile.cycleFrameKeys) && profile.cycleFrameKeys.length) {
+    const chosen = profile.cycleFrameKeys.filter((k) => unlockedKeys.includes(k));
+    if (chosen.length) return chosen;
+  }
+  return unlockedKeys.length ? unlockedKeys : ["cometGold"];
+}
+function initCycleAllFrames() {
+  const keys = getCycleAllFrameKeys();
+  // Städa bort spårning av element som inte längre finns kvar i DOM:en
+  // (t.ex. en modal som stängdes) så deras interval inte fortsätter i onödan.
+  cycleAllTracked.forEach((entry, el) => {
+    if (!document.contains(el)) {
+      clearInterval(entry.intervalId);
+      cycleAllTracked.delete(el);
+    }
+  });
+  document.querySelectorAll("[data-cycle-all]").forEach((el) => {
+    if (cycleAllTracked.has(el)) return;
+    const padding = parseInt(el.dataset.cyclePadding || "3", 10);
+    const shape = el.dataset.cycleShape === "octagon" ? "octagon" : undefined;
+    let i = 0;
+    const applyFrame = () => {
+      const swatch = profileFrameWrapStyle(keys[i % keys.length], padding, shape);
+      el.className = swatch.className;
+      el.setAttribute("style", swatch.style);
+      i++;
+    };
+    applyFrame();
+    const intervalId = setInterval(applyFrame, 2200);
+    cycleAllTracked.set(el, { intervalId });
+  });
+}
+// Anropas när användaren ändrar sitt urval i kryssruteväljaren - då räcker
+// det inte att bara vänta på MutationObservern (ingen DOM ändras), vi vill
+// se den nya listan direkt.
+function refreshCycleAllFrames() {
+  cycleAllTracked.forEach((entry) => clearInterval(entry.intervalId));
+  cycleAllTracked.clear();
+  initCycleAllFrames();
+}
+let cycleAllObserverTimer = null;
+const cycleAllObserver = new MutationObserver(() => {
+  clearTimeout(cycleAllObserverTimer);
+  cycleAllObserverTimer = setTimeout(initCycleAllFrames, 60);
+});
+cycleAllObserver.observe(document.body, { childList: true, subtree: true });
 
 let calorieLog = loadArr("calorie_log");
 function persistCalorieLog() { saveArr("calorie_log", calorieLog); }
@@ -4329,6 +4407,7 @@ function levelHeroCardHTML() {
               && FRAME_EFFECT_KEYS.includes(currentFrameKey)
               && (info.level >= (PROFILE_FRAME_UNLOCK_LEVEL[currentFrameKey] || 1) || debugForceUnlockCosmetics);
             const beltFrame = beltRingActive ? profileFrameWrapStyle(currentFrameKey, 4, "octagon") : null;
+            const beltCycleAttrs = beltRingActive && currentFrameKey === "allaMinaRamar" ? ` data-cycle-all="1" data-cycle-padding="4" data-cycle-shape="octagon"` : "";
             if (!belt.image) {
               return `<span style="width:56px;height:56px;display:flex;color:${nameColor};${isLocked ? "opacity:0.45;" : ""}">${ICONS.belt}</span>`;
             }
@@ -4337,7 +4416,7 @@ function levelHeroCardHTML() {
             // badgens storlek inte hoppar till när man växlar mellan en
             // statisk färg och en rörlig effekt.
             return beltFrame
-              ? `<div class="${beltFrame.className}" style="${beltFrame.style}">${img}</div>`
+              ? `<div class="${beltFrame.className}" style="${beltFrame.style}"${beltCycleAttrs}>${img}</div>`
               : `<div style="padding:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${img}</div>`;
           })()}
           ${stripeCount > 0 ? `<div class="belt-stripe-scroll" style="position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;display:flex;flex-wrap:nowrap;gap:3px;max-width:61px;overflow-x:auto">
@@ -12726,6 +12805,31 @@ function openProfileModal() {
           }).join("");
         })()}
       </div>
+      ${(() => {
+        const currentLevel = computeLevelInfo(totalXp()).level;
+        const cycleUnlocked = currentLevel >= (PROFILE_FRAME_UNLOCK_LEVEL.allaMinaRamar || 999) || debugForceUnlockCosmetics;
+        if (!cycleUnlocked) return "";
+        return `
+        <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
+          <p style="font-size:12px;font-weight:600;margin-bottom:6px">Vilka ska "Alla mina ramar" cykla mellan?</p>
+          <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Fritt urval - allt från en enda till alla.</p>
+          <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
+            ${Object.keys(PROFILE_FRAMES).filter((k) => k !== "allaMinaRamar").map((key) => {
+              const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+              const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+              if (!isUnlocked) return "";
+              const selected = getCycleAllFrameKeys().includes(key);
+              return `
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;${isUnlocked ? "" : "opacity:0.4"}">
+                  <input type="checkbox" data-cycle-frame-key="${key}" ${selected ? "checked" : ""} />
+                  ${PROFILE_FRAMES[key].label}
+                </label>
+              `;
+            }).join("")}
+          </div>
+        </div>
+        `;
+      })()}
       <div class="toggle-row" style="margin-top:10px">
         <span style="font-size:13px;font-weight:600">Visa rörligt sken på Level-Badgen</span>
         <label class="toggle-switch">
@@ -12896,6 +13000,14 @@ function openProfileModal() {
       if (activeTab === "stats") renderStats();
     });
   }
+  modalRoot.querySelectorAll("[data-cycle-frame-key]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const checkedKeys = Array.from(modalRoot.querySelectorAll("[data-cycle-frame-key]:checked")).map((el) => el.dataset.cycleFrameKey);
+      profile.cycleFrameKeys = checkedKeys;
+      saveProfile();
+      refreshCycleAllFrames();
+    });
+  });
   modalRoot.querySelectorAll("[data-profile-belt]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const name = btn.dataset.profileBelt;

@@ -265,32 +265,55 @@
     position: relative; overflow: hidden;
     box-shadow: 0 0 6px var(--comet-glow, rgba(255,77,77,0.35));
   }
-  .avatar-frame-dualcomet::before, .avatar-frame-dualcomet::after {
+  .avatar-frame-dualcomet::before {
     content: ""; position: absolute; inset: -30%;
     background: conic-gradient(from 0deg,
-      transparent 0deg, transparent 320deg,
-      var(--comet-c2, rgba(255,77,77,0.6)) 350deg,
-      #FFFFFF 358deg,
+      transparent 0deg, transparent 250deg,
+      var(--comet-c2, rgba(255,77,77,0.5)) 285deg,
+      var(--comet-c, rgba(255,77,77,0.9)) 325deg,
+      #FFFFFF 345deg,
       transparent 360deg);
+    animation: avatarFrameSpin 2s linear infinite;
   }
-  .avatar-frame-dualcomet::before { animation: avatarFrameSpin 2s linear infinite; }
-  .avatar-frame-dualcomet::after { animation: avatarFrameSpinRev 2s linear infinite; opacity: 0.75; }
+  .avatar-frame-dualcomet::after {
+    content: ""; position: absolute; inset: -30%;
+    background: conic-gradient(from 0deg,
+      #FFFFFF 0deg,
+      var(--comet-c, rgba(255,77,77,0.9)) 20deg,
+      var(--comet-c2, rgba(255,77,77,0.5)) 60deg,
+      transparent 110deg,
+      transparent 360deg);
+    animation: avatarFrameSpinRev 2s linear infinite;
+    mix-blend-mode: screen;
+  }
   .avatar-frame-dualcomet > img, .avatar-frame-dualcomet > div { position: relative; z-index: 1; }
-  /* Ram/glow: dubbelkomet i RGB - samma tvåsvans-jakt som ovan, men varje
-     svans är en liten regnbågsstrimma istället för en enda färg. */
+  /* Ram/glow: dubbelkomet i RGB - samma spegelvända möt-teknik som ovan, men
+     färgen cyklar genom regnbågen via en animerad hue-rotation istället för
+     en fast färg, med samma långa svans som övriga komet-ramar. */
   .avatar-frame-dualcomet-rainbow {
     position: relative; overflow: hidden;
-    box-shadow: 0 0 10px rgba(255,255,255,0.35);
   }
-  .avatar-frame-dualcomet-rainbow::before, .avatar-frame-dualcomet-rainbow::after {
+  .avatar-frame-dualcomet-rainbow::before {
     content: ""; position: absolute; inset: -30%;
     background: conic-gradient(from 0deg,
-      transparent 0deg, transparent 320deg,
-      #FF3DB0 335deg, #FFD24C 342deg, #34D97B 349deg, #2DE0FF 356deg,
+      transparent 0deg, transparent 250deg,
+      rgba(255,77,77,0.5) 285deg,
+      rgba(255,77,77,0.9) 325deg,
+      #FFFFFF 345deg,
       transparent 360deg);
+    animation: avatarFrameSpin 2s linear infinite, avatarFrameHueCycle 3s linear infinite;
   }
-  .avatar-frame-dualcomet-rainbow::before { animation: avatarFrameSpin 2s linear infinite; }
-  .avatar-frame-dualcomet-rainbow::after { animation: avatarFrameSpinRev 2s linear infinite; opacity: 0.75; }
+  .avatar-frame-dualcomet-rainbow::after {
+    content: ""; position: absolute; inset: -30%;
+    background: conic-gradient(from 0deg,
+      #FFFFFF 0deg,
+      rgba(255,77,77,0.9) 20deg,
+      rgba(255,77,77,0.5) 60deg,
+      transparent 110deg,
+      transparent 360deg);
+    animation: avatarFrameSpinRev 2s linear infinite, avatarFrameHueCycle 3s linear infinite;
+    mix-blend-mode: screen;
+  }
   .avatar-frame-dualcomet-rainbow > img, .avatar-frame-dualcomet-rainbow > div { position: relative; z-index: 1; }
   /* Ram/glow: eld - två lager orange/röda bågar i olika hastighet ovanpå
      varandra ger en flimrande låga-känsla. */
@@ -310,10 +333,11 @@
   }
   .avatar-frame-fire::after {
     content: ""; position: absolute; inset: -30%;
-    background: conic-gradient(from 40deg,
-      transparent 0deg, transparent 260deg,
-      rgba(226,75,74,0.6) 300deg,
-      rgba(239,159,39,0.8) 340deg,
+    background: conic-gradient(from 0deg,
+      #FFFFFF 0deg,
+      rgba(226,75,74,0.9) 20deg,
+      rgba(239,159,39,0.5) 60deg,
+      transparent 110deg,
       transparent 360deg);
     animation: avatarFrameSpinRev 2s linear infinite;
     mix-blend-mode: screen;
@@ -338,10 +362,11 @@
   }
   .avatar-frame-frost::after {
     content: ""; position: absolute; inset: -30%;
-    background: conic-gradient(from 40deg,
-      transparent 0deg, transparent 260deg,
-      rgba(45,224,255,0.6) 300deg,
-      rgba(200,240,255,0.8) 340deg,
+    background: conic-gradient(from 0deg,
+      #FFFFFF 0deg,
+      rgba(45,224,255,0.9) 20deg,
+      rgba(200,240,255,0.5) 60deg,
+      transparent 110deg,
       transparent 360deg);
     animation: avatarFrameSpinRev 2.8s linear infinite;
     mix-blend-mode: screen;
@@ -413,23 +438,84 @@
       #9B6BFF 288deg 296deg, transparent 296deg 360deg);
     animation: avatarFrameSpin 1.8s linear infinite;
   }
-  /* Norrsken: mjuk, långsam färgvåg istället för en skarp spets - med samma
-     utåtriktade sken som RGB-ringen. */
-  .avatar-frame-aurora {
-    position: relative; overflow: hidden;
-    box-shadow: 0 0 10px rgba(255,255,255,0.35);
-  }
-  .avatar-frame-aurora::before {
+  /* Norrsken borttagen (för lik RGB-ringen). */
+  /* Ram/glow: "jakt" - två svansar i SAMMA riktning men olika tempo, så den
+     snabbare hinner ikapp den långsammare, går ihop och drar om - som
+     Firefox gamla sidladdnings-snurra. Färgen sätts via --jakt-c1/--jakt-c2
+     inline per val, så samma klass funkar för alla jakt-ramar. */
+  .avatar-frame-jaktchase { position: relative; overflow: hidden; }
+  .avatar-frame-jaktchase::before {
     content: ""; position: absolute; inset: -30%;
-    background: conic-gradient(from 0deg, #34D97B, #2DE0FF, #9B6BFF, #FF3DB0, #34D97B);
-    animation: avatarFrameSpin 8s linear infinite, avatarFrameHueCycle 4s ease-in-out infinite;
-    opacity: 0.85;
+    background: conic-gradient(from 0deg,
+      transparent 0deg, transparent 250deg,
+      var(--jakt-c2, rgba(255,210,76,0.5)) 285deg,
+      var(--jakt-c1, rgba(255,210,76,0.9)) 325deg,
+      #FFFFFF 345deg,
+      transparent 360deg);
+    animation: avatarFrameSpin 2.6s linear infinite;
   }
+  .avatar-frame-jaktchase::after {
+    content: ""; position: absolute; inset: -30%;
+    background: conic-gradient(from 0deg,
+      transparent 0deg, transparent 250deg,
+      var(--jakt-c2, rgba(255,210,76,0.5)) 285deg,
+      var(--jakt-c1, rgba(255,210,76,0.9)) 325deg,
+      #FFFFFF 345deg,
+      transparent 360deg);
+    animation: avatarFrameSpin 1.3s linear infinite;
+    mix-blend-mode: screen;
+  }
+  .avatar-frame-jaktchase > img, .avatar-frame-jaktchase > div { position: relative; z-index: 1; }
+  /* Ram/glow: en helt fylld ring (ingen genomskinlig del) som roterar
+     långsamt så färgen glider mjukt silver -> guld -> diamant -> om igen,
+     utan hårda övergångar. */
+  .avatar-frame-fullshift { position: relative; overflow: hidden; }
+  .avatar-frame-fullshift::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, #C4C2B8 0deg, #EF9F27 120deg, #8FD6FF 240deg, #C4C2B8 360deg);
+    animation: avatarFrameSpin 9s linear infinite;
+  }
+  .avatar-frame-fullshift > img, .avatar-frame-fullshift > div { position: relative; z-index: 1; }
+  /* Ram/glow: eld (långsam) + frost (snabb) i samma ring - samma "jakt"-
+     princip men med två olika teman istället för en färg i två tempon. */
+  .avatar-frame-eldfrostcombo { position: relative; overflow: hidden; }
+  .avatar-frame-eldfrostcombo::before {
+    content: ""; position: absolute; inset: -30%;
+    background: conic-gradient(from 0deg,
+      transparent 0deg, transparent 250deg,
+      rgba(239,159,39,0.5) 285deg,
+      rgba(226,75,74,0.9) 325deg,
+      #FFFFFF 345deg,
+      transparent 360deg);
+    animation: avatarFrameSpin 3.2s linear infinite;
+  }
+  .avatar-frame-eldfrostcombo::after {
+    content: ""; position: absolute; inset: -30%;
+    background: conic-gradient(from 0deg,
+      transparent 0deg, transparent 250deg,
+      rgba(200,240,255,0.5) 285deg,
+      rgba(45,224,255,0.9) 325deg,
+      #FFFFFF 345deg,
+      transparent 360deg);
+    animation: avatarFrameSpin 1.1s linear infinite;
+    mix-blend-mode: screen;
+  }
+  .avatar-frame-eldfrostcombo > img, .avatar-frame-eldfrostcombo > div { position: relative; z-index: 1; }
+  /* Ram/glow: "alla mina ramar" - vilken enskild ram som visas just nu styrs
+     av JS (se initCycleAllFrames i app.js), som växlar CSS-klass på elementet
+     med jämna mellanrum. Denna klass är bara en neutral startpunkt innan JS
+     hunnit sätta igång växlingen. */
+  .avatar-frame-cycleall { position: relative; overflow: hidden; }
+  .avatar-frame-cycleall::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, #FFD24C, #34D97B, #9B6BFF, #FF3DB0, #2DE0FF, #FFD24C);
+    animation: avatarFrameSpin 4s linear infinite;
+  }
+  .avatar-frame-cycleall > img, .avatar-frame-cycleall > div { position: relative; z-index: 1; }
   .avatar-frame-sonar-rainbow > img, .avatar-frame-sonar-rainbow > div,
   .avatar-frame-glitter > img, .avatar-frame-glitter > div,
   .avatar-frame-chase-rainbow > img, .avatar-frame-chase-rainbow > div,
-  .avatar-frame-chase-rainbow5 > img, .avatar-frame-chase-rainbow5 > div,
-  .avatar-frame-aurora > img, .avatar-frame-aurora > div {
+  .avatar-frame-chase-rainbow5 > img, .avatar-frame-chase-rainbow5 > div {
     position: relative; z-index: 1;
   }
   .celebration-overlay {
