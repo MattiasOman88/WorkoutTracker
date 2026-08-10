@@ -3975,7 +3975,7 @@ const ACHIEVEMENTS = [
   { id: "black_belt_day", title: "Black belt!", desc: "Grundaren av appen fick sitt svarta bälte 13 juli 2019.", hint: "Black belt day, i juli.", icon: "crown", xp: 3000, badgeImage: BADGE_IMG_BLACK_BELT_DAY, secret: true,
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "07-13") },
 
-  /* ---------------- New Game+ (efter Platina) ----------------
+  /* ---------------- New Game+-prestationer (efter 100%) ----------------
      Listan/kraven/bilderna kommer från Mattias egen speclista + uppladdade
      badge-bilder. prestige:true som befintliga - samma mål upprepas
      oändligt när man klarar det igen. newGamePlus:true så de INTE räknas
@@ -4040,7 +4040,7 @@ const ACHIEVEMENTS = [
   { id: "ngp_completionist", title: "NG+ Completionist", desc: "Klara alla övriga New Game+-prestationer.", icon: "diamond", xp: 40000, badgeImage: NGP_IMG_COMPLETIONIST, secret: true, newGamePlus: true,
     check: () => isAllNewGamePlusUnlocked() },
 
-  { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, badgeImage: BADGE_IMG_PLATINUM_100, secret: true,
+  { id: "platinum_all", title: "New Game+", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, badgeImage: BADGE_IMG_PLATINUM_100, secret: true,
     check: () => isAllAchievementsUnlocked() },
 ];
 // Sant när ALLT annat i ACHIEVEMENTS är upplåst - alltså det absolut sista
@@ -5995,7 +5995,7 @@ function achievementsCardHTML() {
       <div style="display:flex;align-items:center;gap:10px;background:rgba(239,159,39,0.1);border:1px solid rgba(239,159,39,0.35);border-radius:10px;padding:8px 10px;margin-bottom:10px">
         <span style="font-size:18px;line-height:1">🏆</span>
         <div style="flex:1;min-width:0">
-          <div style="font-size:12.5px;font-weight:700;color:#EF9F27">Platina — alla prestationer klara</div>
+          <div style="font-size:12.5px;font-weight:700;color:#EF9F27">New Game+ — alla prestationer klara</div>
           <div style="font-size:11px;color:var(--muted2)">${fmtDateWithWeekday(platinumUnlockedAt)}</div>
         </div>
         <button id="replayPlatinumBtn" style="background:none;border:1px solid rgba(239,159,39,0.4);color:#EF9F27;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:5px 9px;border-radius:8px;flex-shrink:0">▶ Se igen</button>
@@ -6427,7 +6427,7 @@ function friendRowHTML(f) {
     <button data-open-friend="${escapeHtml(f.user_id)}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:8px 0;font-family:inherit;cursor:pointer;text-align:left;border-bottom:1px solid var(--border)">
       <span style="display:flex;align-items:center;gap:10px;min-width:0">
         ${friendAvatarHTML(f.avatar, f.frame, 36, 2)}
-        <span style="font-size:14px;font-weight:600;color:var(--text)">${escapeHtml(f.display_name || "Okänd")}${f.platinum_unlocked_at ? ` <span title="Platina — alla prestationer klara">🏆</span>` : ""} <span style="font-size:11px;font-weight:400;color:var(--muted2)">#${shortSocialId(f.user_id)}</span></span>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">${escapeHtml(f.display_name || "Okänd")}${f.platinum_unlocked_at ? ` <span title="New Game+ — alla prestationer klara">🏆</span>` : ""} <span style="font-size:11px;font-weight:400;color:var(--muted2)">#${shortSocialId(f.user_id)}</span></span>
       </span>
       <span style="font-size:12px;color:var(--muted2);flex-shrink:0">Nivå ${f.level}</span>
     </button>
@@ -6701,7 +6701,7 @@ async function openFriendProfileModal(friend) {
         <button id="friendProfileBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
         <div style="position:relative;display:flex;justify-content:center;margin-bottom:8px">${crownEmblemOverlayHTMLForFriend(friend.crown_emblem, friend.platinum_unlocked_at, 96)}${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
         <h2 style="text-align:center">${escapeHtml(friend.display_name || "Okänd")} <span style="font-size:13px;font-weight:400;color:var(--muted2)">#${shortSocialId(friend.user_id)}</span></h2>
-        ${friend.platinum_unlocked_at ? `<div style="display:flex;justify-content:center;margin-top:2px"><span style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</span></div>` : ""}
+        ${friend.platinum_unlocked_at ? `<div style="display:flex;justify-content:center;margin-top:2px"><span style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 New Game+ — 100%</span></div>` : ""}
         ${friendGroups.length ? `
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px">
           <span style="font-size:12px;color:var(--muted2)">Grupp:</span>
@@ -13198,7 +13198,7 @@ function openProfileModal() {
             <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
               || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
           </div>
-          ${platinumUnlockedAt ? `<div style="display:flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</div>` : ""}
+          ${platinumUnlockedAt ? `<div style="display:flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 New Game+ — 100%</div>` : ""}
           ${platinumUnlockedAt ? `
           <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
             <span style="font-size:11.5px;color:var(--muted2)">Bevingad krona:</span>
