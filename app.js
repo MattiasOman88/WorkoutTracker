@@ -3369,6 +3369,7 @@ const BADGE_IMG_LO_BIRTHDAY = "badges/BADGE_IMG_LO_BIRTHDAY.png";
 const BADGE_IMG_LUCKY777 = "badges/BADGE_IMG_LUCKY777.png";
 const BADGE_IMG_BLACK_BELT_DAY = "badges/BADGE_IMG_BLACK_BELT_DAY.png";
 const BADGE_IMG_PLATINUM_100 = "badges/BADGE_IMG_PLATINUM_100.png";
+const BADGE_IMG_NEWGAMEPLUS = "badges/BADGE_IMG_NEWGAMEPLUS.png";
 const NGP_IMG_IRON_CENTURY = "badges/NGP_IRON_CENTURY.png";
 const NGP_IMG_COMBAT_CENTURY = "badges/NGP_COMBAT_CENTURY.png";
 const NGP_IMG_CARDIO_CENTURY = "badges/NGP_CARDIO_CENTURY.png";
@@ -4265,9 +4266,7 @@ function showNextCelebration() {
     overlay.className = "celebration-overlay celebration-overlay-platinum";
     overlay.innerHTML = `
       <div class="celebration-card celebration-card-platinum">
-        <div class="celebration-icon" style="color:#EF9F27;border-color:#EF9F27">
-          <span style="width:34px;height:34px;display:flex">${ICONS.sparkles}</span>
-        </div>
+        <img src="${BADGE_IMG_NEWGAMEPLUS}" alt="" class="platinum-badge-img" />
         <div class="celebration-title">🎮 New Game+ upplåst!</div>
         <div style="font-size:14px;color:var(--text);line-height:1.5;margin-bottom:16px;position:relative;z-index:1">Du är en av få som tagit dig hela vägen hit — men resan slutar inte här. Nya, tuffare prestationer väntar redan i din lista.</div>
         <button class="modal-btn primary" id="celebrationNextBtn">Visa mina nya prestationer</button>
