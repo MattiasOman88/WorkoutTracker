@@ -3360,6 +3360,8 @@ const BADGE_IMG_NUM_OF_BEAST = "badges/BADGE_IMG_NUM_OF_BEAST.png";
 const BADGE_IMG_LO_BIRTHDAY = "badges/BADGE_IMG_LO_BIRTHDAY.png";
 const BADGE_IMG_LUCKY777 = "badges/BADGE_IMG_LUCKY777.png";
 const BADGE_IMG_BLACK_BELT_DAY = "badges/BADGE_IMG_BLACK_BELT_DAY.png";
+const EMBLEM_CROWN_WINGS_GOLD = "badges/EMBLEM_CROWN_WINGS_GOLD.png";
+const EMBLEM_CROWN_WINGS_DIAMOND = "badges/EMBLEM_CROWN_WINGS_DIAMOND.png";
 const BADGE_IMG_JULHJALTEN = "badges/BADGE_IMG_JULHJALTEN.png";
 const BADGE_IMG_MIDSOMMARKRIGAREN = "badges/BADGE_IMG_MIDSOMMARKRIGAREN.png";
 const BADGE_IMG_AVSLUTA_STARKT = "badges/BADGE_IMG_AVSLUTA_STARKT.png";
@@ -5126,6 +5128,29 @@ function savePlatinumUnlockedAt() {
 }
 let platinumUnlockedAt = loadPlatinumUnlockedAt();
 
+// Bevingad krona - ett eget märke (skilt från ramarna) man kan sätta ovanför
+// avataren när man nått platina. profile.crownEmblem: null (av) | "gold" |
+// "diamond". Kräver platinumUnlockedAt, annars ignoreras valet.
+function crownEmblemImgSrc(key) {
+  if (key === "gold") return EMBLEM_CROWN_WINGS_GOLD;
+  if (key === "diamond") return EMBLEM_CROWN_WINGS_DIAMOND;
+  return null;
+}
+function crownEmblemOverlayHTML(key, widthPx) {
+  if (!platinumUnlockedAt) return "";
+  const src = crownEmblemImgSrc(key);
+  if (!src) return "";
+  return `<img src="${src}" alt="Bevingad krona" style="position:absolute;top:${-Math.round(widthPx * 0.34)}px;left:50%;transform:translateX(-50%);width:${widthPx}px;pointer-events:none" />`;
+}
+// Samma sak men för en väns emblem - styrs av deras EGET platinum_unlocked_at
+// (från Supabase), inte den inloggade användarens.
+function crownEmblemOverlayHTMLForFriend(crownEmblem, friendPlatinumUnlockedAt, widthPx) {
+  if (!friendPlatinumUnlockedAt) return "";
+  const src = crownEmblemImgSrc(crownEmblem);
+  if (!src) return "";
+  return `<img src="${src}" alt="Bevingad krona" style="position:absolute;top:${-Math.round(widthPx * 0.34)}px;left:50%;transform:translateX(-50%);width:${widthPx}px;pointer-events:none" />`;
+}
+
 function loadAchievementPrestige() {
   try {
     const raw = localStorage.getItem("achievement_prestige_v1");
@@ -6517,7 +6542,7 @@ async function openFriendProfileModal(friend) {
     <div class="modal-overlay" id="friendProfileOverlay">
       <div class="modal-sheet" style="min-height:85vh;min-height:85dvh">
         <button id="friendProfileBackBtn" aria-label="Tillbaka" style="background:none;border:none;padding:4px;margin:-4px;cursor:pointer;color:var(--text);display:flex;align-items:center;flex-shrink:0"><span class="icon-20">${ICONS.chevronLeft}</span></button>
-        <div style="display:flex;justify-content:center;margin-bottom:8px">${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
+        <div style="position:relative;display:flex;justify-content:center;margin-bottom:8px">${crownEmblemOverlayHTMLForFriend(friend.crown_emblem, friend.platinum_unlocked_at, 96)}${friendAvatarHTML(friend.avatar, friend.frame, 72, 3)}</div>
         <h2 style="text-align:center">${escapeHtml(friend.display_name || "Okänd")} <span style="font-size:13px;font-weight:400;color:var(--muted2)">#${shortSocialId(friend.user_id)}</span></h2>
         ${friend.platinum_unlocked_at ? `<div style="display:flex;justify-content:center;margin-top:2px"><span style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</span></div>` : ""}
         ${friendGroups.length ? `
@@ -10403,6 +10428,7 @@ async function pushSocialProfileToCloud() {
     belt_dates: profile.beltDates || {},
     searchable: socialSearchable,
     platinum_unlocked_at: platinumUnlockedAt ? new Date(platinumUnlockedAt).toISOString() : null,
+    crown_emblem: platinumUnlockedAt ? (profile.crownEmblem || null) : null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
   if (error) throw error;
@@ -13010,9 +13036,20 @@ function openProfileModal() {
           <h2>Profil</h2>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px">
-          <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
-            || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
+          <div style="position:relative">
+            ${crownEmblemOverlayHTML(profile.crownEmblem, 116)}
+            <div id="profileAvatarWrap">${profileAvatarHTML(88, 3)
+              || `<div style="width:88px;height:88px;border-radius:50%;background:var(--input-bg);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--muted)"><span class="icon-32" style="display:flex">${ICONS.userCircle}</span></div>`}</div>
+          </div>
           ${platinumUnlockedAt ? `<div style="display:flex;align-items:center;gap:4px;background:rgba(239,159,39,0.12);border:1px solid rgba(239,159,39,0.4);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#EF9F27">🏆 Platina — 100%</div>` : ""}
+          ${platinumUnlockedAt ? `
+          <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+            <span style="font-size:11.5px;color:var(--muted2)">Bevingad krona:</span>
+            <button data-crown-emblem="" class="crown-emblem-btn" style="font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid ${!profile.crownEmblem ? "var(--text)" : "var(--border2)"};background:none;color:var(--text);cursor:pointer;font-family:inherit">Av</button>
+            <button data-crown-emblem="gold" class="crown-emblem-btn" style="font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid ${profile.crownEmblem === "gold" ? "#EF9F27" : "var(--border2)"};background:none;color:${profile.crownEmblem === "gold" ? "#EF9F27" : "var(--text)"};cursor:pointer;font-family:inherit">Guld</button>
+            <button data-crown-emblem="diamond" class="crown-emblem-btn" style="font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid ${profile.crownEmblem === "diamond" ? "#85B7EB" : "var(--border2)"};background:none;color:${profile.crownEmblem === "diamond" ? "#85B7EB" : "var(--text)"};cursor:pointer;font-family:inherit">Diamant</button>
+          </div>
+          ` : ""}
           <div style="display:flex;gap:8px">
             <button class="modal-btn secondary" id="profileAvatarUploadBtn" style="padding:6px 14px;font-size:12.5px;width:auto">${profile.avatar ? "Byt bild" : "Ladda upp bild"}</button>
             ${profile.avatar ? `<button class="delete-btn" id="profileAvatarRemoveBtn" style="padding:6px 10px">${ICONS.trash}</button>` : ""}
@@ -13163,6 +13200,13 @@ function openProfileModal() {
       if (activeTab === "stats") renderStats();
     });
   }
+  modalRoot.querySelectorAll("[data-crown-emblem]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      profile.crownEmblem = btn.dataset.crownEmblem || null;
+      saveProfile();
+      reopenProfileModal();
+    });
+  });
   modalRoot.querySelectorAll("[data-cycle-frame-key]").forEach((cb) => {
     cb.addEventListener("change", () => {
       const checkedKeys = Array.from(modalRoot.querySelectorAll("[data-cycle-frame-key]:checked")).map((el) => el.dataset.cycleFrameKey);
