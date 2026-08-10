@@ -4274,7 +4274,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card celebration-card-platinum">
         <div class="platinum-confetti" aria-hidden="true">${Array.from({ length: 24 }).map((_, i) => `<span style="--i:${i}"></span>`).join("")}</div>
-        <img src="${BADGE_IMG_PLATINUM_100}" alt="" style="width:96px;height:auto;display:block;margin:0 auto 6px;position:relative;z-index:1" />
+        <img src="${BADGE_IMG_PLATINUM_100}" alt="" class="platinum-badge-img" />
         <div class="celebration-title">🏆 100%!</div>
         <div style="font-size:14px;color:var(--text);line-height:1.4;margin-bottom:10px;position:relative;z-index:1">Du har låst upp ALLA prestationer i appen! Endast <b style="color:#EF9F27" id="platinumStatsPctSpan">${pctText}</b>% har låst upp denna prestation!</div>
         <div style="font-size:12.5px;color:var(--muted);line-height:1.4;margin-bottom:14px;position:relative;z-index:1">En permanent markering syns nu på din profil som alla dina vänner kan se! Du kan se det här firandet igen när du vill, från prestationslistan.</div>

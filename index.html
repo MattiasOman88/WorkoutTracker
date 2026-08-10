@@ -561,12 +561,26 @@
   /* Platina-firandet: större, guldigare, med fallande konfetti - ska kännas
      som en riktig milstolpe jämfört med en vanlig prestations-popup. */
   .celebration-card-platinum {
-    position: relative; overflow: hidden; max-width: 320px;
+    position: relative; overflow: visible; max-width: 400px;
+    padding: 112px 30px 34px;
     border-color: rgba(239,159,39,0.5);
-    box-shadow: 0 12px 50px rgba(239,159,39,0.25);
+    border-width: 2px;
+    box-shadow: 0 20px 70px rgba(239,159,39,0.3);
   }
+  .celebration-card-platinum .celebration-title { font-size: 26px; margin-bottom: 8px; }
   .platinum-icon-ring { animation: avatarFramePulse 1.3s ease-in-out infinite; }
-  .platinum-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .platinum-badge-img {
+    position: absolute; top: -64px; left: 50%; transform: translateX(-50%);
+    width: 190px; height: auto; z-index: 2;
+    filter: drop-shadow(0 10px 26px rgba(0,0,0,0.5));
+    animation: platinumBadgePop .55s cubic-bezier(.34,1.56,.64,1) .1s both;
+  }
+  @keyframes platinumBadgePop {
+    0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+    65% { transform: translateX(-50%) scale(1.12); opacity: 1; }
+    100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+  .platinum-confetti { position: absolute; inset: -60px 0 0 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
   .platinum-confetti span {
     position: absolute; top: -10%; left: calc(var(--i) * 4.3%);
     width: 6px; height: 10px;
