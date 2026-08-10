@@ -3361,6 +3361,26 @@ const BADGE_IMG_LO_BIRTHDAY = "badges/BADGE_IMG_LO_BIRTHDAY.png";
 const BADGE_IMG_LUCKY777 = "badges/BADGE_IMG_LUCKY777.png";
 const BADGE_IMG_BLACK_BELT_DAY = "badges/BADGE_IMG_BLACK_BELT_DAY.png";
 const BADGE_IMG_PLATINUM_100 = "badges/BADGE_IMG_PLATINUM_100.png";
+const NGP_IMG_IRON_CENTURY = "badges/NGP_IRON_CENTURY.png";
+const NGP_IMG_COMBAT_CENTURY = "badges/NGP_COMBAT_CENTURY.png";
+const NGP_IMG_CARDIO_CENTURY = "badges/NGP_CARDIO_CENTURY.png";
+const NGP_IMG_100 = "badges/NGP_100.png";
+const NGP_IMG_500_CLUB = "badges/NGP_500_CLUB.png";
+const NGP_IMG_TIME_LORD = "badges/NGP_TIME_LORD.png";
+const NGP_IMG_NO_WEEKS_OFF = "badges/NGP_NO_WEEKS_OFF.png";
+const NGP_IMG_LONG_GAME = "badges/NGP_LONG_GAME.png";
+const NGP_IMG_HYBRID_ATHLETE = "badges/NGP_HYBRID_ATHLETE.png";
+const NGP_IMG_TRIPLE_CENTURY = "badges/NGP_TRIPLE_CENTURY.png";
+const NGP_IMG_SUBMISSION_MASTER = "badges/NGP_SUBMISSION_MASTER.png";
+const NGP_IMG_BINGO_MASTER = "badges/NGP_BINGO_MASTER.png";
+const NGP_IMG_250 = "badges/NGP_250.png";
+const NGP_IMG_PERFECT_MONTH = "badges/NGP_PERFECT_MONTH.png";
+const NGP_IMG_PERFECT_QUARTER = "badges/NGP_PERFECT_QUARTER.png";
+const NGP_IMG_EXPLORER = "badges/NGP_EXPLORER.png";
+const NGP_IMG_GRAND_SLAM = "badges/NGP_GRAND_SLAM.png";
+const NGP_IMG_UNSTOPPABLE = "badges/NGP_UNSTOPPABLE.png";
+const NGP_IMG_PERFECT_YEAR = "badges/NGP_PERFECT_YEAR.png";
+const NGP_IMG_COMPLETIONIST = "badges/NGP_COMPLETIONIST.png";
 const EMBLEM_CROWN_WINGS_GOLD = "badges/EMBLEM_CROWN_WINGS_GOLD.png";
 const EMBLEM_CROWN_WINGS_DIAMOND = "badges/EMBLEM_CROWN_WINGS_DIAMOND.png";
 const BADGE_IMG_JULHJALTEN = "badges/BADGE_IMG_JULHJALTEN.png";
@@ -3948,24 +3968,69 @@ const ACHIEVEMENTS = [
     check: () => workoutEntries.some((e) => isTraining(e) && e.date.slice(5) === "07-13") },
 
   /* ---------------- New Game+ (efter Platina) ----------------
-     Några exempel-prestationer till att börja med - redigera/lägg till
-     fler i samma stil. Ett steg tuffare än det tidigare toppmålet i samma
-     kategori, prestige:true precis som befintliga (samma mål upprepas
-     oändligt när man klarar det igen, ingen växande svårighet). Flaggade
-     newGamePlus:true så de INTE räknas med i platina-kravet (annars hade
-     platina blivit omöjligt att nå - se isAllAchievementsUnlocked nedan). */
-  { id: "ngp_total_1500", title: "1500 pass", desc: "Loggat 1500 träningspass totalt.", icon: "sparkles", xp: 25000, prestige: true, newGamePlus: true,
-    check: () => workoutEntries.filter(isTraining).length >= 1500,
-    progress: () => ({ current: workoutEntries.filter(isTraining).length, target: 1500 }) },
-  { id: "ngp_year_500", title: "500 pass under ett år", desc: "Tränat 500 pass under ett och samma år.", icon: "sparkles", xp: 25000, prestige: true, newGamePlus: true,
-    check: () => trainingCountInYear(new Date().getFullYear()) >= 500,
-    progress: () => ({ current: trainingCountInYear(new Date().getFullYear()), target: 500 }) },
-  { id: "ngp_cardio_200", title: "200 konditionspass", desc: "Loggat 200 konditionspass totalt.", icon: "sparkles", xp: 8000, prestige: true, newGamePlus: true,
-    check: () => workoutEntries.filter(isCardio).length >= 200,
-    progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 200 }) },
-  { id: "ngp_weight_18months", title: "18 månader", desc: "Loggat vikt 548 dagar i följd.", icon: "sparkles", xp: 22000, prestige: true, newGamePlus: true,
-    check: () => longestConsecutiveRun(weightEntries.map((e) => e.date)) >= 548,
-    progress: () => ({ current: longestConsecutiveRun(weightEntries.map((e) => e.date)), target: 548 }) },
+     Listan/kraven/bilderna kommer från Mattias egen speclista + uppladdade
+     badge-bilder. prestige:true som befintliga - samma mål upprepas
+     oändligt när man klarar det igen. newGamePlus:true så de INTE räknas
+     med i platina-kravet (se isAllAchievementsUnlocked). "Perfect Month/
+     Quarter/Year" tolkas som en svit av veckor där alla veckoutmaningar
+     klarades (~4/13/52 veckor) - se longestPerfectWeeklyChallengeStreak. */
+  { id: "ngp_iron_century", title: "Iron Century", desc: "Genomför 100 styrkepass.", icon: "dumbbell", xp: 10000, badgeImage: NGP_IMG_IRON_CENTURY, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isGymType).length >= 100,
+    progress: () => ({ current: workoutEntries.filter(isGymType).length, target: 100 }) },
+  { id: "ngp_combat_century", title: "Combat Century", desc: "Genomför 100 kampsportspass.", icon: "belt", xp: 10000, badgeImage: NGP_IMG_COMBAT_CENTURY, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isMartialArts).length >= 100,
+    progress: () => ({ current: workoutEntries.filter(isMartialArts).length, target: 100 }) },
+  { id: "ngp_cardio_century", title: "Cardio Century", desc: "Genomför 100 konditionspass.", icon: "runner", xp: 10000, badgeImage: NGP_IMG_CARDIO_CENTURY, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isCardio).length >= 100,
+    progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 100 }) },
+  { id: "ngp_100", title: "NG+ 100", desc: "Genomför 100 träningspass i New Game+.", icon: "diamond", xp: 12000, badgeImage: NGP_IMG_100, prestige: true, newGamePlus: true,
+    check: () => ngPlusTrainingEntries().length >= 100,
+    progress: () => ({ current: ngPlusTrainingEntries().length, target: 100 }) },
+  { id: "ngp_500_club", title: "The 500 Club", desc: "Genomför 500 träningspass i New Game+.", icon: "trophy", xp: 30000, badgeImage: NGP_IMG_500_CLUB, prestige: true, newGamePlus: true,
+    check: () => ngPlusTrainingEntries().length >= 500,
+    progress: () => ({ current: ngPlusTrainingEntries().length, target: 500 }) },
+  { id: "ngp_time_lord", title: "Time Lord", desc: "Samla 10 000 minuters träning i New Game+.", icon: "hourglass", xp: 18000, badgeImage: NGP_IMG_TIME_LORD, prestige: true, newGamePlus: true,
+    check: () => ngPlusTrainingMinutes() >= 10000,
+    progress: () => ({ current: ngPlusTrainingMinutes(), target: 10000 }) },
+  { id: "ngp_no_weeks_off", title: "No Weeks Off", desc: "Träna minst 1 pass varje vecka i 26 veckor i rad.", icon: "calendar", xp: 10000, badgeImage: NGP_IMG_NO_WEEKS_OFF, prestige: true, newGamePlus: true,
+    check: () => longestConsecutiveRunStep(workoutEntries.filter(isTraining).map((e) => mondayOf(e.date)), 7) >= 26,
+    progress: () => ({ current: longestConsecutiveRunStep(workoutEntries.filter(isTraining).map((e) => mondayOf(e.date)), 7), target: 26 }) },
+  { id: "ngp_long_game", title: "The Long Game", desc: "Träna minst 1 pass varje vecka i 52 veckor i rad.", icon: "calendarCheck", xp: 20000, badgeImage: NGP_IMG_LONG_GAME, prestige: true, newGamePlus: true,
+    check: () => longestConsecutiveRunStep(workoutEntries.filter(isTraining).map((e) => mondayOf(e.date)), 7) >= 52,
+    progress: () => ({ current: longestConsecutiveRunStep(workoutEntries.filter(isTraining).map((e) => mondayOf(e.date)), 7), target: 52 }) },
+  { id: "ngp_hybrid_athlete", title: "Hybrid Athlete", desc: "Genomför 50 styrkepass + 50 kampsportspass + 50 konditionspass.", icon: "target", xp: 15000, badgeImage: NGP_IMG_HYBRID_ATHLETE, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isGymType).length >= 50 && workoutEntries.filter(isMartialArts).length >= 50 && workoutEntries.filter(isCardio).length >= 50 },
+  { id: "ngp_triple_century", title: "Triple Century", desc: "Genomför 100 styrkepass + 100 kampsportspass + 100 konditionspass.", icon: "crown", xp: 25000, badgeImage: NGP_IMG_TRIPLE_CENTURY, prestige: true, newGamePlus: true,
+    check: () => workoutEntries.filter(isGymType).length >= 100 && workoutEntries.filter(isMartialArts).length >= 100 && workoutEntries.filter(isCardio).length >= 100 },
+  { id: "ngp_submission_master", title: "Submission Master", desc: "Registrera 300 submissions.", icon: "belt", xp: 15000, badgeImage: NGP_IMG_SUBMISSION_MASTER, prestige: true, newGamePlus: true,
+    check: () => totalSubmissionCount() >= 300,
+    progress: () => ({ current: totalSubmissionCount(), target: 300 }) },
+  { id: "ngp_bingo_master", title: "Bingo Master", desc: "Klara 10 fullständiga Submission Bingo-brickor.", icon: "puzzle", xp: 15000, badgeImage: NGP_IMG_BINGO_MASTER, prestige: true, newGamePlus: true,
+    check: () => (bingoLifetimeStats.fullCount || 0) >= 10,
+    progress: () => ({ current: bingoLifetimeStats.fullCount || 0, target: 10 }) },
+  { id: "ngp_250", title: "NG+ 250", desc: "Genomför 250 träningspass i New Game+.", icon: "gem", xp: 20000, badgeImage: NGP_IMG_250, prestige: true, newGamePlus: true,
+    check: () => ngPlusTrainingEntries().length >= 250,
+    progress: () => ({ current: ngPlusTrainingEntries().length, target: 250 }) },
+  { id: "ngp_perfect_month", title: "Perfect Month", desc: "Klara samtliga vecko- och månadsmål under en månad.", icon: "calendar", xp: 8000, badgeImage: NGP_IMG_PERFECT_MONTH, prestige: true, newGamePlus: true,
+    check: () => longestPerfectWeeklyChallengeStreak() >= 4,
+    progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 4 }) },
+  { id: "ngp_perfect_quarter", title: "Perfect Quarter", desc: "Klara samtliga vecko- och månadsmål under 3 månader i rad.", icon: "medal", xp: 16000, badgeImage: NGP_IMG_PERFECT_QUARTER, prestige: true, newGamePlus: true,
+    check: () => longestPerfectWeeklyChallengeStreak() >= 13,
+    progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 13 }) },
+  { id: "ngp_explorer", title: "Explorer", desc: "Genomför minst 10 olika typer av träningspass.", icon: "compass", xp: 6000, badgeImage: NGP_IMG_EXPLORER, prestige: true, newGamePlus: true,
+    check: () => new Set(workoutEntries.filter(isTraining).map((e) => e.type)).size >= 10,
+    progress: () => ({ current: new Set(workoutEntries.filter(isTraining).map((e) => e.type)).size, target: 10 }) },
+  { id: "ngp_grand_slam", title: "The Grand Slam", desc: "Genomför styrka + kampsport + kondition under samma vecka, 10 olika veckor.", icon: "trophy", xp: 14000, badgeImage: NGP_IMG_GRAND_SLAM, prestige: true, newGamePlus: true,
+    check: () => weeksWithAllThreeCategories() >= 10,
+    progress: () => ({ current: weeksWithAllThreeCategories(), target: 10 }) },
+  { id: "ngp_unstoppable", title: "Unstoppable", desc: "Genomför 250 träningspass inom 365 dagar.", icon: "flame", xp: 14000, badgeImage: NGP_IMG_UNSTOPPABLE, prestige: true, newGamePlus: true,
+    check: () => maxTrainingCountInAnyYearWindow() >= 250,
+    progress: () => ({ current: maxTrainingCountInAnyYearWindow(), target: 250 }) },
+  { id: "ngp_perfect_year", title: "Perfect Year", desc: "Klara samtliga vecko- och månadsmål under 12 månader i rad.", icon: "crown", xp: 25000, badgeImage: NGP_IMG_PERFECT_YEAR, prestige: true, newGamePlus: true,
+    check: () => longestPerfectWeeklyChallengeStreak() >= 52,
+    progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 52 }) },
+  { id: "ngp_completionist", title: "NG+ Completionist", desc: "Klara alla övriga New Game+-prestationer.", icon: "diamond", xp: 40000, badgeImage: NGP_IMG_COMPLETIONIST, secret: true, newGamePlus: true,
+    check: () => isAllNewGamePlusUnlocked() },
 
   { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, badgeImage: BADGE_IMG_PLATINUM_100, secret: true,
     check: () => isAllAchievementsUnlocked() },
@@ -3974,6 +4039,63 @@ const ACHIEVEMENTS = [
 // steget innan platina-prestationen ("platinum_all") själv låses upp.
 // Utesluter medvetet sig själv (paradox) och alla newGamePlus-flaggade
 // prestationer (annars vore platina omöjligt - de är TÄNKTA att komma efter).
+// --- Hjälpfunktioner för New Game+ -----------------------------------
+// Antal/minuter tränat EFTER att platina nåddes (platinumUnlockedAt är en
+// "YYYY-MM-DD"-sträng, direkt jämförbar med e.date).
+function ngPlusTrainingEntries() {
+  if (!platinumUnlockedAt) return [];
+  return workoutEntries.filter((e) => isTraining(e) && e.date >= platinumUnlockedAt);
+}
+function ngPlusTrainingMinutes() {
+  return ngPlusTrainingEntries().reduce((s, e) => s + (Number(e.minutes) || 0), 0);
+}
+// Längsta sviten av veckor där ALLA veckoutmaningar klarades (completed ===
+// total) - används för Perfect Month/Quarter/Year. Tolkning: en "månad" =
+// ~4 veckor, "kvartal" = ~13 veckor, "år" = 52 veckor (samma mönster som
+// befintliga "Extrem konsekvens"). Justera lätt om du menade något annat
+// med "vecko- och månadsmål".
+function longestPerfectWeeklyChallengeStreak() {
+  const weeks = weeklyChallengeHistory.map((w) => ({ weekStart: w.weekStart, perfect: w.total > 0 && w.completed === w.total }));
+  if (weeklyChallengeState.ids && weeklyChallengeState.ids.length) {
+    weeks.push({ weekStart: weeklyChallengeState.weekStart, perfect: weeklyChallengeState.completed.length === weeklyChallengeState.ids.length });
+  }
+  return longestConsecutiveRunStep(weeks.filter((w) => w.perfect).map((w) => w.weekStart), 7);
+}
+// Flest träningspass inom NÅGOT rullande 365-dagarsfönster (inte bara ett
+// kalenderår) - för "Unstoppable".
+function maxTrainingCountInAnyYearWindow() {
+  const dates = workoutEntries.filter(isTraining).map((e) => e.date).sort();
+  let best = 0;
+  for (let i = 0; i < dates.length; i++) {
+    const windowEnd = addDays(dates[i], 365);
+    let count = 0;
+    for (let j = i; j < dates.length && dates[j] <= windowEnd; j++) count++;
+    best = Math.max(best, count);
+  }
+  return best;
+}
+// Antal olika veckor (måndag-till-söndag) där man tränat styrka OCH
+// kampsport OCH kondition samma vecka - för "The Grand Slam".
+function weeksWithAllThreeCategories() {
+  const byWeek = {};
+  workoutEntries.filter(isTraining).forEach((e) => {
+    const wk = mondayOf(e.date);
+    if (!byWeek[wk]) byWeek[wk] = new Set();
+    byWeek[wk].add(typeCategory(e.type));
+  });
+  return Object.values(byWeek).filter((s) => s.has("gym") && s.has("kampsport") && s.has("kondition")).length;
+}
+function totalSubmissionCount() {
+  let total = 0;
+  workoutEntries.forEach((e) => { (e.submissions || []).forEach(() => { total++; }); });
+  return total;
+}
+// Sant när alla ÖVRIGA newGamePlus-flaggade prestationer är upplåsta -
+// utesluter sig själv (samma paradox-undvikande mönster som platinum_all).
+function isAllNewGamePlusUnlocked() {
+  return ACHIEVEMENTS.filter((a) => a.newGamePlus && a.id !== "ngp_completionist").every((a) => unlockedAchievements.includes(a.id));
+}
+
 function isAllAchievementsUnlocked() {
   return ACHIEVEMENTS.filter((a) => a.id !== "platinum_all" && !a.newGamePlus).every((a) => unlockedAchievements.includes(a.id));
 }
@@ -5093,7 +5215,7 @@ const ACHIEVEMENT_CATEGORIES = [
   { label: "Submissions", ids: ["submission_first", "choke_wizard", "armbar_wizard", "leglock_lunatic", "twister_twister", "choke_combo", "armbar_combo", "leg_combo", "triple_threat", "choke_combo_5", "armbar_combo_5", "leg_combo_5", "triple_threat_3", "triple_threat_5", "submission_one_of_each"] },
   { label: "Submission-bingo", ids: ["bingo_line", "bingo_corners", "bingo_x", "bingo_ring", "bingo_2lines", "bingo_3lines", "bingo_full", "bingo_2lines_5", "bingo_corners_5", "bingo_x_5", "bingo_full_5", "bingo_3lines_5", "bingo_corners_10", "bingo_x_10", "bingo_full_10"] },
   { label: "Övriga", ids: ["variety", "variety_2", "allround", "calorie_week", "calorie_30", "weekend_warrior", "weekend_warrior_10", "fredagsmys", "fredagsmys_2", "lordagsgodis", "lordagsgodis_2", "advanced_evaluation", "summer_warrior", "winter_warrior", "extreme_consistency", "marathon_trainer", "fartdaren", "fartcyklisten"] },
-  { label: "New Game+", ids: ["ngp_total_1500", "ngp_year_500", "ngp_cardio_200", "ngp_weight_18months"] },
+  { label: "New Game+", ids: ["ngp_iron_century", "ngp_combat_century", "ngp_cardio_century", "ngp_100", "ngp_500_club", "ngp_time_lord", "ngp_no_weeks_off", "ngp_long_game", "ngp_hybrid_athlete", "ngp_triple_century", "ngp_submission_master", "ngp_bingo_master", "ngp_250", "ngp_perfect_month", "ngp_perfect_quarter", "ngp_explorer", "ngp_grand_slam", "ngp_unstoppable", "ngp_perfect_year", "ngp_completionist"] },
   { label: "Hemliga", ids: ACHIEVEMENTS.filter((a) => a.secret).map((a) => a.id) },
 ];
 
