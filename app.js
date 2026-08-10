@@ -13507,7 +13507,10 @@ function openProfileModal() {
       if (cycleAllInvolved) {
         // "Alla animationer" har en egen urvalslista som bara ska synas när
         // den faktiskt är vald - kräver en full omritning för att dyka
-        // upp/försvinna, inte bara punktuppdateringarna nedan.
+        // upp/försvinna, inte bara punktuppdateringarna nedan. Men vi vill
+        // ändå uppdatera level-kortet bakom modalen direkt (annars syns
+        // bytet inte förrän man bytt flik och tillbaka).
+        renderLevelHeroCard();
         reopenProfileModal();
         return;
       }
