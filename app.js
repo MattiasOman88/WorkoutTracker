@@ -4204,17 +4204,16 @@ function showNextCelebration() {
 
   if (item.type === "achievement") {
     const a = item.achievement;
-    const iconHTML = a.badgeImage
-      ? `<img src="${a.badgeImage}" alt="${a.title}" style="width:58px;height:58px;object-fit:contain;display:block" />`
+    const hasBadgeImg = !!a.badgeImage;
+    const iconHTML = hasBadgeImg
+      ? `<img src="${a.badgeImage}" alt="${a.title}" class="achievement-badge-pop" />`
       : a.emoji
-      ? `<span style="font-size:32px;line-height:1">${a.emoji}</span>`
-      : `<span style="width:34px;height:34px;display:flex">${ICONS[a.icon]}</span>`;
+      ? `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="font-size:32px;line-height:1">${a.emoji}</span></div>`
+      : `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="width:34px;height:34px;display:flex">${ICONS[a.icon]}</span></div>`;
     overlay.innerHTML = `
-      <div class="celebration-card">
-        <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}">
-          ${iconHTML}
-        </div>
-        <div class="celebration-title">🎉 Grattis!</div>
+      <div class="celebration-card" style="${hasBadgeImg ? "padding-top:78px" : ""}">
+        ${iconHTML}
+        <div class="celebration-title" style="${hasBadgeImg ? "margin-top:4px" : ""}">🎉 Grattis!</div>
         <div class="celebration-sub">Du klarade prestationen</div>
         <div class="celebration-achievement">${escapeHtml(a.title)}</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${escapeHtml(a.desc)}</div>
