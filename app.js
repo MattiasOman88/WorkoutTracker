@@ -438,7 +438,7 @@ const PROFILE_FRAMES = {
   eldringJakt: { label: "Eldring-jakt", type: "jaktChase", color: "#E24B4A", color2: "#EF9F27" },
   frostringJakt: { label: "Frostring-jakt", type: "jaktChase", color: "#2DE0FF", color2: "#C8F0FF" },
   eldFrostCombo: { label: "Eld (långsam) + Frost (snabb)", type: "eldFrostCombo" },
-  allaMinaRamar: { label: "Alla mina ramar", type: "cycleAll" },
+  allaMinaRamar: { label: "Alla animationer", type: "cycleAll" },
 };
 // Nivå 1-50 är de befintliga effekterna, de fem första bara 1 steg isär så de
 // känns som ett tidigt matchande set (pulserande röd flyttad hit istället för
@@ -532,7 +532,7 @@ const FRAME_EFFECT_KEYS = [
   "dualComet", "dualCometRainbow", "rainbow",
   "cometJaktLilaRosa", "diamantJakt", "silverGuldDiamant", "eldringJakt", "frostringJakt", "eldFrostCombo", "allaMinaRamar",
 ];
-// "Alla mina ramar" - cyklar genom ett fritt urval av tidigare upplåsta ramar
+// "Alla animationer" - cyklar genom ett fritt urval av tidigare upplåsta ramar
 // (inget min/max - allt från 1 till alla). profile.cycleFrameKeys sparar
 // urvalet; null/tom lista = alla upplåsta (utom cykel-ramen själv) som
 // standard. Elementen hittas via MutationObserver istället för att ropas
@@ -563,15 +563,20 @@ function initCycleAllFrames() {
     if (cycleAllTracked.has(el)) return;
     const padding = parseInt(el.dataset.cyclePadding || "3", 10);
     const shape = el.dataset.cycleShape === "octagon" ? "octagon" : undefined;
-    let i = 0;
+    const tickMs = 2200;
+    // Index räknas fram från verklig klocktid (inte en lokal räknare) så att
+    // öppna/stänga profilmenyn, byta krona osv - som skapar ett helt nytt
+    // DOM-element för avataren - INTE gör att cykeln hoppar tillbaka till
+    // första ramen. Alla element som cyklar visar alltid "rätt" ram för
+    // stunden, oavsett när de skapades.
     const applyFrame = () => {
-      const swatch = profileFrameWrapStyle(keys[i % keys.length], padding, shape);
+      const idx = Math.floor(Date.now() / tickMs) % keys.length;
+      const swatch = profileFrameWrapStyle(keys[idx], padding, shape);
       el.className = swatch.className;
       el.setAttribute("style", swatch.style);
-      i++;
     };
     applyFrame();
-    const intervalId = setInterval(applyFrame, 2200);
+    const intervalId = setInterval(applyFrame, tickMs);
     cycleAllTracked.set(el, { intervalId });
   });
 }
@@ -13185,12 +13190,12 @@ function openProfileModal() {
       ${(() => {
         const currentLevel = computeLevelInfo(totalXp()).level;
         const cycleUnlocked = currentLevel >= (PROFILE_FRAME_UNLOCK_LEVEL.allaMinaRamar || 999) || debugForceUnlockCosmetics;
-        // Bara relevant att visa urvalslistan när "Alla mina ramar" faktiskt
+        // Bara relevant att visa urvalslistan när "Alla animationer" faktiskt
         // är den valda ramen just nu - annars är den bara i vägen.
         if (!cycleUnlocked || resolveProfileFrame() !== "allaMinaRamar") return "";
         return `
         <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-          <p style="font-size:12px;font-weight:600;margin-bottom:6px">Vilka ska "Alla mina ramar" cykla mellan?</p>
+          <p style="font-size:12px;font-weight:600;margin-bottom:6px">Vilka ska "Alla animationer" cykla mellan?</p>
           <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Fritt urval - allt från en enda till alla.</p>
           <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
             ${Object.keys(PROFILE_FRAMES).filter((k) => k !== "allaMinaRamar").map((key) => {
@@ -13500,7 +13505,7 @@ function openProfileModal() {
       // man bytt flik manuellt.
       renderNav();
       if (cycleAllInvolved) {
-        // "Alla mina ramar" har en egen urvalslista som bara ska synas när
+        // "Alla animationer" har en egen urvalslista som bara ska synas när
         // den faktiskt är vald - kräver en full omritning för att dyka
         // upp/försvinna, inte bara punktuppdateringarna nedan.
         reopenProfileModal();
