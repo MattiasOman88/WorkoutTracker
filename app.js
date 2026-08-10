@@ -3360,6 +3360,7 @@ const BADGE_IMG_NUM_OF_BEAST = "badges/BADGE_IMG_NUM_OF_BEAST.png";
 const BADGE_IMG_LO_BIRTHDAY = "badges/BADGE_IMG_LO_BIRTHDAY.png";
 const BADGE_IMG_LUCKY777 = "badges/BADGE_IMG_LUCKY777.png";
 const BADGE_IMG_BLACK_BELT_DAY = "badges/BADGE_IMG_BLACK_BELT_DAY.png";
+const BADGE_IMG_PLATINUM_100 = "badges/BADGE_IMG_PLATINUM_100.png";
 const EMBLEM_CROWN_WINGS_GOLD = "badges/EMBLEM_CROWN_WINGS_GOLD.png";
 const EMBLEM_CROWN_WINGS_DIAMOND = "badges/EMBLEM_CROWN_WINGS_DIAMOND.png";
 const BADGE_IMG_JULHJALTEN = "badges/BADGE_IMG_JULHJALTEN.png";
@@ -3966,7 +3967,7 @@ const ACHIEVEMENTS = [
     check: () => longestConsecutiveRun(weightEntries.map((e) => e.date)) >= 548,
     progress: () => ({ current: longestConsecutiveRun(weightEntries.map((e) => e.date)), target: 548 }) },
 
-  { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, secret: true,
+  { id: "platinum_all", title: "Platina", desc: "Låst upp varenda prestation i appen. Alla.", hint: "Det finns ingenting kvar att hitta.", icon: "crown", xp: 20000, badgeImage: BADGE_IMG_PLATINUM_100, secret: true,
     check: () => isAllAchievementsUnlocked() },
 ];
 // Sant när ALLT annat i ACHIEVEMENTS är upplåst - alltså det absolut sista
@@ -4126,19 +4127,18 @@ function showNextCelebration() {
     `;
   } else if (item.type === "platinum") {
     overlay.className = "celebration-overlay celebration-overlay-platinum";
+    const pctText = platinumStatsPct !== null ? platinumStatsPct.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "…";
     overlay.innerHTML = `
       <div class="celebration-card celebration-card-platinum">
         <div class="platinum-confetti" aria-hidden="true">${Array.from({ length: 24 }).map((_, i) => `<span style="--i:${i}"></span>`).join("")}</div>
-        <div class="celebration-icon platinum-icon-ring" style="color:#EF9F27;border-color:#EF9F27">
-          <span style="width:34px;height:34px;display:flex">${ICONS.crown}</span>
-        </div>
+        <img src="${BADGE_IMG_PLATINUM_100}" alt="" style="width:96px;height:auto;display:block;margin:0 auto 6px;position:relative;z-index:1" />
         <div class="celebration-title">🏆 100%!</div>
-        <div class="celebration-sub">Du har låst upp ALLA prestationer i appen</div>
-        <div class="celebration-achievement">Platina</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">En permanent markering syns nu på din profil. Du kan se det här firandet igen när du vill, från prestationslistan.</div>
+        <div style="font-size:14px;color:var(--text);line-height:1.4;margin-bottom:10px;position:relative;z-index:1">Du har låst upp ALLA prestationer i appen! Endast <b style="color:#EF9F27" id="platinumStatsPctSpan">${pctText}</b>% har låst upp denna prestation!</div>
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.4;margin-bottom:14px;position:relative;z-index:1">En permanent markering syns nu på din profil som alla dina vänner kan se! Du kan se det här firandet igen när du vill, från prestationslistan.</div>
         <button class="modal-btn primary" id="celebrationNextBtn">Fantastiskt!</button>
       </div>
     `;
+    fetchPlatinumStatsPct();
   } else {
     overlay.innerHTML = `
       <div class="celebration-card">
@@ -5127,6 +5127,33 @@ function savePlatinumUnlockedAt() {
   } catch (e) { /* ignore */ }
 }
 let platinumUnlockedAt = loadPlatinumUnlockedAt();
+
+// Hur stor andel av alla appens användare som nått platina - hämtas från
+// Supabase (get_platinum_unlock_percentage RPC) och cachas lokalt så
+// firande-kortet kan visa en siffra direkt även innan frågan hunnit svara.
+function loadPlatinumStatsPct() {
+  try {
+    const raw = localStorage.getItem("platinum_stats_pct_v1");
+    return raw ? Number(raw) : null;
+  } catch (e) { return null; }
+}
+function savePlatinumStatsPct() {
+  try {
+    if (platinumStatsPct !== null) localStorage.setItem("platinum_stats_pct_v1", String(platinumStatsPct));
+  } catch (e) { /* ignore */ }
+}
+let platinumStatsPct = loadPlatinumStatsPct();
+async function fetchPlatinumStatsPct() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.rpc("get_platinum_unlock_percentage");
+    if (error || data === null) return;
+    platinumStatsPct = Number(data);
+    savePlatinumStatsPct();
+    const el = document.getElementById("platinumStatsPctSpan");
+    if (el) el.textContent = platinumStatsPct.toLocaleString("sv-SE", { maximumFractionDigits: 1 });
+  } catch (e) { /* ignore - offline etc. */ }
+}
 
 // Bevingad krona - ett eget märke (skilt från ramarna) man kan sätta ovanför
 // avataren när man nått platina. profile.crownEmblem: null (av) | "gold" |
