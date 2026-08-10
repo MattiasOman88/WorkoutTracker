@@ -4139,6 +4139,7 @@ function checkAchievements() {
     platinumUnlockedAt = todayISO();
     savePlatinumUnlockedAt();
     celebrationQueue.push({ type: "platinum" });
+    celebrationQueue.push({ type: "newgameplus_intro" });
   }
 
   const autoPrestiged = [];
@@ -4255,6 +4256,18 @@ function showNextCelebration() {
         <button class="modal-btn secondary" id="celebrationNextBtn" style="margin-top:8px">Senare</button>
       </div>
     `;
+  } else if (item.type === "newgameplus_intro") {
+    overlay.className = "celebration-overlay celebration-overlay-platinum";
+    overlay.innerHTML = `
+      <div class="celebration-card celebration-card-platinum">
+        <div class="celebration-icon" style="color:#EF9F27;border-color:#EF9F27">
+          <span style="width:34px;height:34px;display:flex">${ICONS.sparkles}</span>
+        </div>
+        <div class="celebration-title">🎮 New Game+ upplåst!</div>
+        <div style="font-size:14px;color:var(--text);line-height:1.5;margin-bottom:16px;position:relative;z-index:1">Du är en av få som tagit dig hela vägen hit — men resan slutar inte här. Nya, tuffare prestationer väntar redan i din lista.</div>
+        <button class="modal-btn primary" id="celebrationNextBtn">Visa mina nya prestationer</button>
+      </div>
+    `;
   } else if (item.type === "platinum") {
     overlay.className = "celebration-overlay celebration-overlay-platinum";
     const pctText = platinumStatsPct !== null ? platinumStatsPct.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "…";
@@ -4294,8 +4307,14 @@ function showNextCelebration() {
   }
   document.getElementById("celebrationNextBtn").addEventListener("click", () => {
     const wasLevelUp = item.type === "levelup";
+    const wasNewGamePlusIntro = item.type === "newgameplus_intro";
     celebrationQueue.shift();
     overlay.remove();
+    if (wasNewGamePlusIntro) {
+      achievementsExpanded = true;
+      hideUnlockedAchievements = false;
+      if (activeTab !== "stats") switchTab("stats"); else renderStats();
+    }
     // Om Inställningar redan var öppet när man levlade upp visade
     // ikon-väljaren fortfarande gammal låst/upplåst-status. Rendera om den
     // direkt så man slipper stänga och öppna menyn igen.
@@ -11880,6 +11899,7 @@ function openBackupModal() {
         platinumUnlockedAt = todayISO();
         savePlatinumUnlockedAt();
         celebrationQueue.push({ type: "platinum" });
+        celebrationQueue.push({ type: "newgameplus_intro" });
       }
       renderDebugAchievementsList();
       if (activeTab === "stats") renderStats(); else render();
