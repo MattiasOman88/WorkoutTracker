@@ -12,7 +12,7 @@ const DEFAULT_TRAINING_TYPES = [
   { key: "Gym", label: "Gym", color: "#4CAF7D", defaultMinutes: 60, defaultKcalBurned: 250, category: "gym" },
   { key: "Cykel", label: "Cykel", color: "#5B7FBF", defaultMinutes: "", defaultKcalBurned: "", category: "kondition" },
   { key: "Motionscykel", label: "Motionscykel", color: "#C9A227", defaultMinutes: "", defaultKcalBurned: "", category: "kondition" },
-  { key: "Jogging", label: "Löpning", color: "#E8834A", defaultMinutes: "", defaultKcalBurned: "", category: "kondition" },
+  { key: "Löpning", label: "Löpning", color: "#E8834A", defaultMinutes: "", defaultKcalBurned: "", category: "kondition" },
   { key: "Ovrigt", label: "Övrigt", color: "#8A8E99", defaultMinutes: "", defaultKcalBurned: "", category: null },
 ];
 const TYPE_COLOR_PALETTE = ["#B06AE0", "#E85D9E", "#4CAF7D", "#5B7FBF", "#C9A227", "#E8834A", "#4FC3D9", "#8A8E99", "#6EE7B7", "#F5A65B"];
@@ -333,6 +333,14 @@ function saveArr(key, arr) {
 
 let weightEntries = loadArr("weight_entries").sort((a, b) => a.date.localeCompare(b.date));
 let workoutEntries = loadArr("workout_entries").sort((a, b) => b.date.localeCompare(a.date));
+// Nyckeln för löpning bytte namn från "Jogging" till "Löpning" (för att vara
+// konsekvent med övriga typer, där nyckel === etikett). Migrera ev. gamla
+// loggade pass så statistik/prestationer inte tappar bort dem.
+(() => {
+  let migrated = false;
+  workoutEntries.forEach((e) => { if (e.type === "Jogging") { e.type = "Löpning"; migrated = true; } });
+  if (migrated) saveArr("workout_entries", workoutEntries);
+})();
 
 function persistWeights() { saveArr("weight_entries", weightEntries); }
 function persistWorkouts() { saveArr("workout_entries", workoutEntries); }
@@ -590,7 +598,7 @@ function addDays(iso, days) {
   return toLocalISO(d);
 }
 let workoutFormState = { type: TRAINING_KEYS[0] || HEALTH_KEYS[0], minutes: DEFAULT_MINUTES[TRAINING_KEYS[0]] || "", date: todayISO(), customLabel: "", note: "", editingId: null, distance: "", ratings: {}, gymSplit: null, submissions: [] };
-const DISTANCE_TYPES = ["Jogging", "Motionscykel", "Cykel"];
+const DISTANCE_TYPES = ["Löpning", "Motionscykel", "Cykel"];
 let weightChartInstance = null;
 let statsWeightChartInstance = null;
 let statsBarChartInstance = null;
@@ -3808,7 +3816,7 @@ const ACHIEVEMENTS = [
     check: () => workoutEntries.filter((e) => isTraining(e) && new Date(e.date + "T00:00:00").getDay() === 5).length >= 20,
     progress: () => ({ current: workoutEntries.filter((e) => isTraining(e) && new Date(e.date + "T00:00:00").getDay() === 5).length, target: 20 }) },
   { id: "fartdaren", title: "Fartdåren", desc: "Sprungit med en snitthastighet över 10 km/h (under 6:00 min/km).", icon: "zap", xp: 300, badgeImage: OVRIGA_BADGE_IMG_7,
-    check: () => workoutEntries.some((e) => e.type === "Jogging" && parsedSpeedKmh(e) > 10) },
+    check: () => workoutEntries.some((e) => e.type === "Löpning" && parsedSpeedKmh(e) > 10) },
   { id: "fartcyklisten", title: "Fartcyklisten", desc: "Kört motionscykel med en snitthastighet över 30 km/h (under 2:00 min/km).", icon: "wind", xp: 300, badgeImage: OVRIGA_BADGE_IMG_8,
     check: () => workoutEntries.some((e) => e.type === "Motionscykel" && parsedSpeedKmh(e) > 30) },
   { id: "lordagsgodis", title: "Lördagsgodis", desc: "Tränat 10 lördagar.", icon: "gift", xp: 300, badgeImage: OVRIGA_BADGE_IMG_6, prestige: true,
@@ -3825,17 +3833,17 @@ const ACHIEVEMENTS = [
     check: () => workoutEntries.filter(isCardio).length >= 10,
     progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 10 }) },
   { id: "jogging_5", title: "Sprungit 5 gånger", desc: "Tränat löpning 5 gånger totalt.", icon: "target", xp: 350, badgeImage: KONDITION_BADGE_IMG_3, prestige: true,
-    check: () => workoutEntries.filter((e) => e.type === "Jogging").length >= 5,
-    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Jogging").length, target: 5 }) },
+    check: () => workoutEntries.filter((e) => e.type === "Löpning").length >= 5,
+    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Löpning").length, target: 5 }) },
   { id: "cardio_25", title: "25 konditionspass", desc: "Loggat 25 konditionspass totalt.", icon: "flame", xp: 700, badgeImage: KONDITION_BADGE_IMG_4, prestige: true,
     check: () => workoutEntries.filter(isCardio).length >= 25,
     progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 25 }) },
   { id: "loparen", title: "Löparen", desc: "Sprungit 3 gånger under samma vecka.", icon: "zap", xp: 900, badgeImage: KONDITION_BADGE_IMG_5, prestige: true,
-    check: () => maxSessionsInAnyWeek(workoutEntries.filter((e) => e.type === "Jogging")) >= 3,
-    progress: () => ({ current: maxSessionsInAnyWeek(workoutEntries.filter((e) => e.type === "Jogging")), target: 3 }) },
+    check: () => maxSessionsInAnyWeek(workoutEntries.filter((e) => e.type === "Löpning")) >= 3,
+    progress: () => ({ current: maxSessionsInAnyWeek(workoutEntries.filter((e) => e.type === "Löpning")), target: 3 }) },
   { id: "jogging_10", title: "Sprungit 10 gånger", desc: "Tränat löpning 10 gånger totalt.", icon: "mountain", xp: 900, badgeImage: KONDITION_BADGE_IMG_6, prestige: true,
-    check: () => workoutEntries.filter((e) => e.type === "Jogging").length >= 10,
-    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Jogging").length, target: 10 }) },
+    check: () => workoutEntries.filter((e) => e.type === "Löpning").length >= 10,
+    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Löpning").length, target: 10 }) },
   { id: "cyklisten", title: "Cyklisten", desc: "Loggat 25 cykel- eller motionscykelpass totalt.", icon: "compass", xp: 1100, badgeImage: KONDITION_BADGE_IMG_7, prestige: true,
     check: () => workoutEntries.filter((e) => e.type === "Cykel" || e.type === "Motionscykel").length >= 25,
     progress: () => ({ current: workoutEntries.filter((e) => e.type === "Cykel" || e.type === "Motionscykel").length, target: 25 }) },
@@ -3843,8 +3851,8 @@ const ACHIEVEMENTS = [
     check: () => workoutEntries.filter(isCardio).length >= 50,
     progress: () => ({ current: workoutEntries.filter(isCardio).length, target: 50 }) },
   { id: "jogging_25", title: "Sprungit 25 gånger", desc: "Tränat löpning 25 gånger totalt.", icon: "comet", xp: 1700, badgeImage: KONDITION_BADGE_IMG_9, prestige: true,
-    check: () => workoutEntries.filter((e) => e.type === "Jogging").length >= 25,
-    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Jogging").length, target: 25 }) },
+    check: () => workoutEntries.filter((e) => e.type === "Löpning").length >= 25,
+    progress: () => ({ current: workoutEntries.filter((e) => e.type === "Löpning").length, target: 25 }) },
   { id: "cardio_streak_3w", title: "Kondition i 3 veckor", desc: "Tränat kondition minst en gång i veckan, 3 veckor i följd.", icon: "rocket", xp: 1700, badgeImage: KONDITION_BADGE_IMG_10, prestige: true,
     check: () => hasConsecutiveWeeksWithMin(workoutEntries.filter(isCardio), 3, 1),
     progress: () => ({ current: longestConsecutiveWeeksWithMin(workoutEntries.filter(isCardio), 1), target: 3 }) },
@@ -4011,10 +4019,10 @@ const ACHIEVEMENTS = [
   { id: "ngp_250", title: "NG+ 250", desc: "Genomför 250 träningspass i New Game+.", icon: "gem", xp: 20000, badgeImage: NGP_IMG_250, prestige: true, newGamePlus: true,
     check: () => ngPlusTrainingEntries().length >= 250,
     progress: () => ({ current: ngPlusTrainingEntries().length, target: 250 }) },
-  { id: "ngp_perfect_month", title: "Perfect Month", desc: "Klara samtliga vecko- och månadsmål under en månad.", icon: "calendar", xp: 8000, badgeImage: NGP_IMG_PERFECT_MONTH, prestige: true, newGamePlus: true,
+  { id: "ngp_perfect_month", title: "Perfect Month", desc: "Klara veckoutmaningen 4 veckor i rad.", icon: "calendar", xp: 8000, badgeImage: NGP_IMG_PERFECT_MONTH, prestige: true, newGamePlus: true,
     check: () => longestPerfectWeeklyChallengeStreak() >= 4,
     progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 4 }) },
-  { id: "ngp_perfect_quarter", title: "Perfect Quarter", desc: "Klara samtliga vecko- och månadsmål under 3 månader i rad.", icon: "medal", xp: 16000, badgeImage: NGP_IMG_PERFECT_QUARTER, prestige: true, newGamePlus: true,
+  { id: "ngp_perfect_quarter", title: "Perfect Quarter", desc: "Klara veckoutmaningen 13 veckor i rad.", icon: "medal", xp: 16000, badgeImage: NGP_IMG_PERFECT_QUARTER, prestige: true, newGamePlus: true,
     check: () => longestPerfectWeeklyChallengeStreak() >= 13,
     progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 13 }) },
   { id: "ngp_explorer", title: "Explorer", desc: "Genomför minst 10 olika typer av träningspass.", icon: "compass", xp: 6000, badgeImage: NGP_IMG_EXPLORER, prestige: true, newGamePlus: true,
@@ -4026,7 +4034,7 @@ const ACHIEVEMENTS = [
   { id: "ngp_unstoppable", title: "Unstoppable", desc: "Genomför 250 träningspass inom 365 dagar.", icon: "flame", xp: 14000, badgeImage: NGP_IMG_UNSTOPPABLE, prestige: true, newGamePlus: true,
     check: () => maxTrainingCountInAnyYearWindow() >= 250,
     progress: () => ({ current: maxTrainingCountInAnyYearWindow(), target: 250 }) },
-  { id: "ngp_perfect_year", title: "Perfect Year", desc: "Klara samtliga vecko- och månadsmål under 12 månader i rad.", icon: "crown", xp: 25000, badgeImage: NGP_IMG_PERFECT_YEAR, prestige: true, newGamePlus: true,
+  { id: "ngp_perfect_year", title: "Perfect Year", desc: "Klara veckoutmaningen 52 veckor i rad.", icon: "crown", xp: 25000, badgeImage: NGP_IMG_PERFECT_YEAR, prestige: true, newGamePlus: true,
     check: () => longestPerfectWeeklyChallengeStreak() >= 52,
     progress: () => ({ current: longestPerfectWeeklyChallengeStreak(), target: 52 }) },
   { id: "ngp_completionist", title: "NG+ Completionist", desc: "Klara alla övriga New Game+-prestationer.", icon: "diamond", xp: 40000, badgeImage: NGP_IMG_COMPLETIONIST, secret: true, newGamePlus: true,
@@ -4775,7 +4783,7 @@ const WEEKLY_CHALLENGE_POOL = {
     { id: "tr_all_three_cats", title: "Alla tre kategorier", desc: "Träna minst ett pass i kondition, kampsport och styrka denna vecka.",
       check: () => { const w = thisWeekTrainingEntries(); return w.some(isCardio) && w.some(isMartialArts) && w.some(isGymType); } },
     { id: "tr_run", title: "Löprunda", desc: "Logga ett löppass denna vecka.",
-      check: () => thisWeekTrainingEntries().some((e) => e.type === "Jogging") },
+      check: () => thisWeekTrainingEntries().some((e) => e.type === "Löpning") },
     { id: "tr_bike", title: "Cykeltur", desc: "Logga ett cykel- eller motionscykelpass denna vecka.",
       check: () => thisWeekTrainingEntries().some((e) => e.type === "Cykel" || e.type === "Motionscykel") },
     { id: "tr_other_type", title: "Egen kategori", desc: "Logga ett träningspass av typen Övrigt denna vecka.",
