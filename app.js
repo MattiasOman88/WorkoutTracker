@@ -4111,6 +4111,10 @@ function isAllAchievementsUnlocked() {
 /* ---------------- Celebration queue ---------------- */
 
 let celebrationQueue = [];
+// Håller referensen till den aktiva Enter-lyssnaren för firande-kort, så vi
+// kan städa bort den korrekt när kortet stängs (annars kan gamla lyssnare
+// hopa sig när flera kort visas efter varandra).
+let celebrationKeyHandler = null;
 
 function checkAchievements() {
   const xpBefore = totalXp();
@@ -4191,6 +4195,7 @@ function showNextCelebration() {
   const item = celebrationQueue[0];
   const existing = document.getElementById("celebrationOverlay");
   if (existing) existing.remove();
+  if (celebrationKeyHandler) { document.removeEventListener("keydown", celebrationKeyHandler); celebrationKeyHandler = null; }
 
   const overlay = document.createElement("div");
   overlay.id = "celebrationOverlay";
@@ -4297,11 +4302,21 @@ function showNextCelebration() {
   }
   document.body.appendChild(overlay);
   playCelebrationChime(item.type);
+  celebrationKeyHandler = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    // Prio: huvudknappen (Toppen!/Fantastiskt! osv). Om kortet bara har en
+    // annan knapp (t.ex. månadssammanfattningen), använd den istället.
+    const btn = document.getElementById("celebrationNextBtn") || document.getElementById("celebrationMonthRecapBtn");
+    if (btn) btn.click();
+  };
+  document.addEventListener("keydown", celebrationKeyHandler);
   const monthRecapBtn = document.getElementById("celebrationMonthRecapBtn");
   if (monthRecapBtn) {
     monthRecapBtn.addEventListener("click", () => {
       celebrationQueue.shift();
       overlay.remove();
+      if (celebrationKeyHandler) { document.removeEventListener("keydown", celebrationKeyHandler); celebrationKeyHandler = null; }
       openMonthRecapModal(item.monthKey);
     });
   }
@@ -4310,6 +4325,7 @@ function showNextCelebration() {
     const wasNewGamePlusIntro = item.type === "newgameplus_intro";
     celebrationQueue.shift();
     overlay.remove();
+    if (celebrationKeyHandler) { document.removeEventListener("keydown", celebrationKeyHandler); celebrationKeyHandler = null; }
     if (wasNewGamePlusIntro) {
       achievementsExpanded = true;
       hideUnlockedAchievements = false;
