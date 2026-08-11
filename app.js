@@ -8300,7 +8300,7 @@ function calorieHistoryListCardHTML() {
         <div class="history-scroll" style="max-height:420px">
           ${rows.map((row) => `
             <div style="display:grid;${gridTemplate}align-items:center;padding:10px 4px;border-bottom:1px solid var(--border)">
-              <span style="font-size:13px;color:var(--muted)">${fmtDateWithWeekday(row.date)}</span>
+              <span style="font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fmtDateShort(row.date)}</span>
               <span style="font-size:13px;font-weight:600;color:#E8834A">${row.eaten}</span>
               <span style="font-size:13px;font-weight:600;color:#4A90D9">${row.burned}</span>
               <span style="font-size:13px;font-weight:700;color:${remainingColor(row.remaining)}">${row.remaining !== null ? row.remaining : "–"}</span>
