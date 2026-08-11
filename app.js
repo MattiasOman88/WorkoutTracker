@@ -4224,7 +4224,7 @@ function showNextCelebration() {
       ? `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="font-size:32px;line-height:1">${a.emoji}</span></div>`
       : `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="width:34px;height:34px;display:flex">${ICONS[a.icon]}</span></div>`;
     overlay.innerHTML = `
-      <div class="celebration-card" style="${hasBadgeImg ? "padding-top:78px" : ""}">
+      <div class="celebration-card" style="${hasBadgeImg ? "padding-top:96px" : ""}">
         ${iconHTML}
         <div class="celebration-title" style="${hasBadgeImg ? "margin-top:4px" : ""}">🎉 Grattis!</div>
         <div class="celebration-sub">Du klarade prestationen</div>
@@ -4300,10 +4300,8 @@ function showNextCelebration() {
     fetchPlatinumStatsPct();
   } else {
     overlay.innerHTML = `
-      <div class="celebration-card">
-        <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}">
-          <img src="${CELEBRATION_IMG_LEVELUP}" alt="" style="width:58px;height:58px;object-fit:contain;display:block" />
-        </div>
+      <div class="celebration-card" style="padding-top:96px">
+        <img src="${CELEBRATION_IMG_LEVELUP}" alt="" class="achievement-badge-pop" />
         <div class="celebration-title">🚀 Level up!</div>
         <div class="celebration-sub">Du är nu</div>
         <div class="celebration-achievement">Level ${item.level}</div>
