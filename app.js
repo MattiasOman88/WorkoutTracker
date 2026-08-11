@@ -2146,8 +2146,20 @@ modalRootEl.addEventListener("touchend", (e) => {
   const dx = t.clientX - modalSwipeStartX;
   const dy = t.clientY - modalSwipeStartY;
   const horizontalEnough = Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4;
-  if (!horizontalEnough || dx <= 0) return;
-  if (modalRootEl.innerHTML.trim()) history.back();
+  if (!horizontalEnough) return;
+  // Svep vänster i just Inställningar går vidare in i Profil (samma väg
+  // som "Redigera profil"-knappen redan tar) - så hela kedjan blir
+  // symmetrisk: Statistik -> vänster -> Inställningar -> vänster -> Profil,
+  // och tillbaka samma väg med höger-svep (höger-svepet återanvänder redan
+  // profileModalReturnsToSettings-flaggan, ingen extra kod behövdes där).
+  if (dx < 0 && document.getElementById("openProfileBtn") && !document.getElementById("profileName")) {
+    profileModalReturnsToSettings = true;
+    const sheet = modalRootEl.querySelector(".modal-sheet");
+    profileModalReturnScrollTop = sheet ? sheet.scrollTop : 0;
+    openProfileModal();
+    return;
+  }
+  if (dx > 0 && modalRootEl.innerHTML.trim()) history.back();
 }, { passive: true });
 
 /* ---------------- VIKT TAB ---------------- */
