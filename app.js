@@ -464,7 +464,15 @@ const PROFILE_FRAME_KEY_MIGRATIONS = {
 // null/ogiltigt val faller alltid tillbaka på "cometGold" - den är alltid upplåst.
 function resolveProfileFrame() {
   const key = PROFILE_FRAME_KEY_MIGRATIONS[profile.frame] || profile.frame;
-  return key && PROFILE_FRAMES[key] ? key : "cometGold";
+  if (!key || !PROFILE_FRAMES[key]) return "cometGold";
+  // Om man t.ex. nollställt sin nivå men fortfarande har en ram vald som
+  // krävde en högre nivå (sparad i profil.frame sen tidigare), ska den
+  // sluta visas - annars ser man en "upplåst" ram man inte längre kvalar
+  // för. Faller tillbaka till första/enklaste ramen istället.
+  const currentLevel = computeLevelInfo(totalXp()).level;
+  const requiredLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+  if (currentLevel < requiredLevel && !debugForceUnlockCosmetics) return "cometGold";
+  return key;
 }
 // Bygger style/klass för ramen/glowen runt en bild eller flikikon.
 // `padding` avgör hur tjock ringen är (samma enhet som bildens storlek).
