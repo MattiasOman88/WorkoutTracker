@@ -2119,6 +2119,7 @@ content.addEventListener("touchend", (e) => {
   const dy = t.clientY - swipeStartY;
   const horizontalEnough = Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4;
   if (!horizontalEnough) return;
+  if (dx < 0 && activeTab === "stats") { openBackupModal(); return; }
   const idx = TABS.findIndex((tb) => tb.key === activeTab);
   if (dx < 0 && idx < TABS.length - 1) switchTab(TABS[idx + 1].key);
   else if (dx > 0 && idx > 0) switchTab(TABS[idx - 1].key);
