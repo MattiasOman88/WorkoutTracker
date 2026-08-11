@@ -215,7 +215,7 @@
   /* Ram/glow: roterande regnbågssken, upplåst på level 75 (högsta tiern). */
   @keyframes avatarFrameSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .avatar-frame-rainbow {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
     background: conic-gradient(from 0deg, #FF3DB0, #FFD24C, #34D97B, #2DE0FF, #9B6BFF, #FF3DB0);
     box-shadow: 0 0 10px rgba(255,255,255,0.35);
   }
@@ -246,7 +246,7 @@
     50% { box-shadow: 0 0 10px rgba(200,240,255,0.7); }
   }
   .avatar-frame-comet {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
     box-shadow: 0 0 6px var(--comet-glow, rgba(255,210,76,0.35));
   }
   .avatar-frame-comet::before {
@@ -262,7 +262,7 @@
   .avatar-frame-comet > img, .avatar-frame-comet > div { position: relative; z-index: 1; }
   /* Ram/glow: dubbelkomet - två svansar som jagar varandra åt varsitt håll. */
   .avatar-frame-dualcomet {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
     box-shadow: 0 0 6px var(--comet-glow, rgba(255,77,77,0.35));
   }
   .avatar-frame-dualcomet::before {
@@ -292,7 +292,7 @@
      färgen cyklar genom regnbågen via en animerad hue-rotation istället för
      en fast färg, med samma långa svans som övriga komet-ramar. */
   .avatar-frame-dualcomet-rainbow {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
   }
   .avatar-frame-dualcomet-rainbow::before {
     content: ""; position: absolute; inset: -30%;
@@ -320,7 +320,7 @@
   /* Ram/glow: eld - två lager orange/röda bågar i olika hastighet ovanpå
      varandra ger en flimrande låga-känsla. */
   .avatar-frame-fire {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
     box-shadow: 0 0 8px rgba(226,75,74,0.4);
   }
   .avatar-frame-fire::before {
@@ -350,7 +350,7 @@
      bågar i olika hastighet), fast i isblå/vita toner plus ett mjukt
      pulserande sken för en glittrig känsla. */
   .avatar-frame-frost {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%);
     animation: avatarFrameFrostShimmer 1.8s ease-in-out infinite;
   }
   .avatar-frame-frost::before {
@@ -412,7 +412,7 @@
     0% { transform: scale(0.55); opacity: 1; }
     100% { transform: scale(1.45); opacity: 0; }
   }
-  .avatar-frame-sonar-rainbow { position: relative; }
+  .avatar-frame-sonar-rainbow { position: relative; border-radius: 50%; clip-path: circle(50%); }
   .avatar-frame-sonar-rainbow::before {
     content: ""; position: absolute; inset: 0; border-radius: 50%;
     background: conic-gradient(from 0deg, #34D97B, #2DE0FF, #9B6BFF, #FF3DB0, #34D97B);
@@ -425,14 +425,14 @@
     animation: avatarFrameSonarPulseBig 1.8s ease-out infinite, avatarFrameHueCycle 2.5s linear infinite;
   }
   /* Glitter-ring: täta streck som roterar stadigt i konstant färg. */
-  .avatar-frame-glitter { position: relative; overflow: hidden; }
+  .avatar-frame-glitter { position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%); }
   .avatar-frame-glitter::before {
     content: ""; position: absolute; inset: -10%;
     background: repeating-conic-gradient(var(--glitter-c, #FF2EC4) 0deg 4deg, transparent 4deg 20deg);
     animation: avatarFrameSpin 6s linear infinite;
   }
   /* Jagande prickar: tre punkter i omlopp. */
-  .avatar-frame-chase-rainbow { position: relative; overflow: hidden; }
+  .avatar-frame-chase-rainbow { position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%); }
   .avatar-frame-chase-rainbow::before {
     content: ""; position: absolute; inset: -10%;
     background: conic-gradient(from 0deg,
@@ -442,7 +442,7 @@
     animation: avatarFrameSpin 1.6s linear infinite;
   }
   /* Samma teknik som Jagande prickar men med 5 punkter istället för 3. */
-  .avatar-frame-chase-rainbow5 { position: relative; overflow: hidden; }
+  .avatar-frame-chase-rainbow5 { position: relative; overflow: hidden; border-radius: 50%; clip-path: circle(50%); }
   .avatar-frame-chase-rainbow5::before {
     content: ""; position: absolute; inset: -10%;
     background: conic-gradient(from 0deg,
