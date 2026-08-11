@@ -4466,10 +4466,7 @@ function openBingoModal() {
     modalRoot.querySelectorAll("[data-swap-square]").forEach((sqEl) => {
       sqEl.addEventListener("click", () => {
         const idx = parseInt(sqEl.dataset.swapSquare, 10);
-        swapBingoSquare(idx);
-        if (bingoRerollTokens <= 0) bingoSwapMode = false;
-        render();
-        renderBingoCard();
+        openSwapSquareConfirmModal(idx);
       });
     });
     document.getElementById("bingoModalCloseBtn").addEventListener("click", () => { bingoSwapMode = false; modalRoot.innerHTML = ""; });
@@ -5139,6 +5136,31 @@ function startNewBingoCard() {
   saveBingoLifetimeStats();
 }
 
+function openSwapSquareConfirmModal(index) {
+  pushModalHistoryIfNeeded();
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="swapSquareConfirmOverlay">
+      <div class="modal-sheet">
+        <h2 style="text-align:center">Byt ut rutan?</h2>
+        <p style="text-align:center">Det kostar en rutbytes-token. Du har ${bingoRerollTokens} kvar.</p>
+        <div class="row">
+          <button class="modal-btn secondary" id="swapSquareBackBtn" style="flex:1">Nej</button>
+          <button class="modal-btn primary" id="swapSquareConfirmBtn" style="flex:1">Ja, byt</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("swapSquareBackBtn").addEventListener("click", () => { openBingoModal(); });
+  document.getElementById("swapSquareConfirmOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "swapSquareConfirmOverlay") openBingoModal();
+  });
+  document.getElementById("swapSquareConfirmBtn").addEventListener("click", () => {
+    swapBingoSquare(index);
+    if (bingoRerollTokens <= 0) bingoSwapMode = false;
+    renderBingoCard();
+    openBingoModal();
+  });
+}
 function openRerollBingoConfirmModal() {
   pushModalHistoryIfNeeded();
   modalRoot.innerHTML = `
