@@ -4720,9 +4720,15 @@ function wireLevelHeroCardEvents() {
 
 /* ---------------- Veckans utmaning ---------------- */
 
+// Räknas från när DEN HÄR utmaningsomgången faktiskt startade (inte alltid
+// veckans måndag) - annars kan en ny utmaning som rullas fram mitt i veckan
+// (t.ex. via "starta ny utmaning i förtid") råka bli direkt avklarad av
+// sådant man redan gjorde tidigare samma vecka, innan utmaningen ens fanns.
+// weeklyChallengeState.startedAt saknas på gammal sparad data - då faller
+// den tillbaka på veckans måndag precis som tidigare beteende.
 function isDateInThisWeek(dateStr) {
-  const start = mondayOf(todayISO());
-  const end = addDays(start, 6);
+  const start = weeklyChallengeState.startedAt || mondayOf(todayISO());
+  const end = addDays(mondayOf(todayISO()), 6);
   return dateStr >= start && dateStr <= end;
 }
 function thisWeekTrainingEntries() {
@@ -5214,7 +5220,7 @@ function rollWeeklyChallengesIfNeeded() {
     pickOne(WEEKLY_CHALLENGE_POOL.training).id,
     pickOne(WEEKLY_CHALLENGE_POOL.other).id,
   ];
-  weeklyChallengeState = { weekStart: currentMonday, ids, completed: [], bonusAwarded: false };
+  weeklyChallengeState = { weekStart: currentMonday, startedAt: currentMonday, ids, completed: [], bonusAwarded: false };
   if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
@@ -5230,7 +5236,9 @@ function startNextWeeklyChallengeEarly() {
   ];
   // weekStart stays as-is on purpose: the automatic Monday reroll still fires on schedule,
   // this just gives a fresh set of 3 to chase for whatever's left of the current week.
-  weeklyChallengeState = { ...weeklyChallengeState, ids, completed: [], bonusAwarded: false };
+  // startedAt flyttas dock fram till idag, så de nya utmaningarna räknar
+  // från och med nu - inte allt som redan hänt tidigare i veckan.
+  weeklyChallengeState = { ...weeklyChallengeState, ids, startedAt: todayISO(), completed: [], bonusAwarded: false };
   if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
