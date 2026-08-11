@@ -2125,6 +2125,31 @@ content.addEventListener("touchend", (e) => {
   else if (dx > 0 && idx > 0) switchTab(TABS[idx - 1].key);
 }, { passive: true });
 
+// Svep åt höger i EN modal (Inställningar, Profil, m.fl.) backar ut ur den -
+// samma "backa"-väg oavsett vilken modal man råkar vara i, eftersom det
+// bara återanvänder webbläsarhistoriken (history.back()) som redan stänger
+// vad som än är öppet korrekt (se popstate-lyssnaren).
+let modalSwipeStartX = 0;
+let modalSwipeStartY = 0;
+let modalSwiping = false;
+const modalRootEl = document.getElementById("modalRoot");
+modalRootEl.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  modalSwipeStartX = t.clientX;
+  modalSwipeStartY = t.clientY;
+  modalSwiping = true;
+}, { passive: true });
+modalRootEl.addEventListener("touchend", (e) => {
+  if (!modalSwiping) return;
+  modalSwiping = false;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - modalSwipeStartX;
+  const dy = t.clientY - modalSwipeStartY;
+  const horizontalEnough = Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4;
+  if (!horizontalEnough || dx <= 0) return;
+  if (modalRootEl.innerHTML.trim()) history.back();
+}, { passive: true });
+
 /* ---------------- VIKT TAB ---------------- */
 
 const WEIGHT_PERIOD_OPTIONS = [
