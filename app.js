@@ -4424,9 +4424,16 @@ function openBingoModal() {
         <div class="modal-sheet">
           <h2>🥋 Submission-bingo</h2>
           <p style="margin-top:-8px;font-size:12.5px;color:var(--muted)">${daysLeft} ${daysLeft === 1 ? "dag" : "dagar"} kvar av den här brickan.</p>
+          ${bingoRerollTokens > 0 ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(239,159,39,0.1);border:1px solid rgba(239,159,39,0.35);border-radius:10px;padding:8px 10px;margin-bottom:8px">
+            <span style="font-size:12.5px;font-weight:700;color:#EF9F27">🎫 ${bingoRerollTokens} rutbyte${bingoRerollTokens === 1 ? "" : "n"} sparade</span>
+            <button id="bingoSwapModeBtn" style="background:none;border:1px solid rgba(239,159,39,0.4);color:#EF9F27;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:5px 9px;border-radius:8px;flex-shrink:0">${bingoSwapMode ? "Avbryt" : "Byt en ruta"}</button>
+          </div>
+          ${bingoSwapMode ? `<p style="font-size:11.5px;color:#EF9F27;margin-top:-4px">Tryck på en oikryssad ruta för att byta ut den.</p>` : ""}
+          ` : ""}
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:4px 0 10px">
             ${bingoCard.squares.map((sq, i) => `
-              <div style="aspect-ratio:1;border:1px solid var(--border2);border-radius:6px;background:${sq.checked ? `${tabColors.traning}26` : "var(--input-bg)"};${sq.checked ? `border-color:${tabColors.traning};color:${tabColors.traning};font-weight:600;` : ""}${sq.type === "wild" ? "border-style:dashed;" : ""}display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;padding:3px">${escapeHtml(sq.label)}</div>
+              <div ${bingoSwapMode && !sq.checked ? `data-swap-square="${i}"` : ""} style="aspect-ratio:1;border:1px solid var(--border2);border-radius:6px;background:${sq.checked ? `${tabColors.traning}26` : "var(--input-bg)"};${sq.checked ? `border-color:${tabColors.traning};color:${tabColors.traning};font-weight:600;` : ""}${sq.type === "wild" ? "border-style:dashed;" : ""}${bingoSwapMode && !sq.checked ? `border-color:#EF9F27;cursor:pointer;` : ""}display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;padding:3px">${escapeHtml(sq.label)}</div>
             `).join("")}
           </div>
           <p style="font-size:11.5px;color:var(--muted);margin-top:-4px">Rutor kryssas i automatiskt när du loggar submissionen under ett träningspass.</p>
@@ -4451,12 +4458,23 @@ function openBingoModal() {
       </div>
     `;
     const rerollBtn = document.getElementById("rerollBingoBtn");
-    if (rerollBtn) rerollBtn.addEventListener("click", () => { rerollBingoCard(); render(); renderBingoCard(); });
+    if (rerollBtn) rerollBtn.addEventListener("click", () => { openRerollBingoConfirmModal(); });
     const restartBtn = document.getElementById("restartBingoBtn");
     if (restartBtn) restartBtn.addEventListener("click", () => { startNextBingoCardEarly(); render(); renderBingoCard(); });
-    document.getElementById("bingoModalCloseBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; });
+    const swapModeBtn = document.getElementById("bingoSwapModeBtn");
+    if (swapModeBtn) swapModeBtn.addEventListener("click", () => { bingoSwapMode = !bingoSwapMode; render(); });
+    modalRoot.querySelectorAll("[data-swap-square]").forEach((sqEl) => {
+      sqEl.addEventListener("click", () => {
+        const idx = parseInt(sqEl.dataset.swapSquare, 10);
+        swapBingoSquare(idx);
+        if (bingoRerollTokens <= 0) bingoSwapMode = false;
+        render();
+        renderBingoCard();
+      });
+    });
+    document.getElementById("bingoModalCloseBtn").addEventListener("click", () => { bingoSwapMode = false; modalRoot.innerHTML = ""; });
     document.getElementById("bingoModalOverlay").addEventListener("click", (e) => {
-      if (e.target.id === "bingoModalOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+      if (e.target.id === "bingoModalOverlay") { bingoSwapMode = false; modalRoot.innerHTML = ""; handleModalClosedByUser(); }
     });
   };
   render();
@@ -5053,6 +5071,40 @@ function saveBingoLifetimeStats() {
 }
 let bingoLifetimeStats = loadBingoLifetimeStats();
 
+// "Pris" för en full bricka: en token man kan använda för att byta ut EN
+// oikryssad ruta på en (nuvarande eller framtida) bricka mot en ny
+// slumpad. Sparas tills man använder dem - klarar man flera brickor i rad
+// utan att använda dem staplas de bara på.
+function loadBingoRerollTokens() {
+  try { const raw = localStorage.getItem("bingo_reroll_tokens_v1"); return raw ? Number(raw) || 0 : 0; } catch (e) { return 0; }
+}
+function saveBingoRerollTokens() {
+  try { localStorage.setItem("bingo_reroll_tokens_v1", String(bingoRerollTokens)); } catch (e) { /* ignore */ }
+}
+let bingoRerollTokens = loadBingoRerollTokens();
+// Bara UI-läge, sparas inte - av när man öppnar/stänger modalen på nytt.
+let bingoSwapMode = false;
+// Byter ut EN oikryssad ruta mot en ny, slumpad ruta som inte redan finns
+// på brickan (varken nuvarande sort eller wildcard). Kostar en token.
+function swapBingoSquare(index) {
+  if (!bingoCard || bingoRerollTokens <= 0) return;
+  const sq = bingoCard.squares[index];
+  if (!sq || sq.checked) return;
+  const enabledSubs = submissionTypes.filter((s) => s.enabled);
+  const pool = [
+    ...BINGO_WILDCARDS.map((w) => ({ type: "wild", key: w.key, label: w.label })),
+    ...enabledSubs.map((s) => ({ type: "specific", key: s.id, label: s.label, category: s.category })),
+  ];
+  const usedKeys = new Set(bingoCard.squares.map((s) => s.key));
+  const candidates = pool.filter((p) => !usedKeys.has(p.key));
+  if (!candidates.length) return;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  bingoCard.squares[index] = { ...pick, checked: false };
+  bingoRerollTokens -= 1;
+  saveBingoRerollTokens();
+  saveBingoCard();
+}
+
 const BINGO_WILDCARDS = [
   { key: "wild_any", label: "Valfri submission" },
   { key: "wild_choke", label: "Valfri choke" },
@@ -5087,6 +5139,32 @@ function startNewBingoCard() {
   saveBingoLifetimeStats();
 }
 
+function openRerollBingoConfirmModal() {
+  pushModalHistoryIfNeeded();
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="rerollBingoConfirmOverlay">
+      <div class="modal-sheet">
+        <h2 style="text-align:center">Slumpa ny bricka?</h2>
+        <p style="text-align:center">Din nuvarande bricka och alla ikryssade rutor på den försvinner. Du kan bara göra det här <b>en gång</b> per bricka.</p>
+        <div class="row">
+          <button class="modal-btn secondary" id="rerollBingoBackBtn" style="flex:1">Nej, behåll den</button>
+          <button class="modal-btn primary" id="rerollBingoConfirmBtn" style="flex:1">Ja, slumpa ny</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("rerollBingoBackBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; handleModalClosedByUser(); });
+  document.getElementById("rerollBingoConfirmOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "rerollBingoConfirmOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+  document.getElementById("rerollBingoConfirmBtn").addEventListener("click", () => {
+    rerollBingoCard();
+    modalRoot.innerHTML = "";
+    handleModalClosedByUser();
+    render();
+    renderBingoCard();
+  });
+}
 function rerollBingoCard() {
   if (!bingoCard || bingoCard.rerollUsed) return;
   bingoLifetimeStats.squaresChecked -= bingoCard.squares.filter((s) => s.checked).length;
@@ -5164,7 +5242,11 @@ function archiveBingoCard() {
   if (!bingoCard) return;
   const stats = computeBingoStats(bingoCard);
   bingoHistory.push({ startDate: bingoCard.startDate, endDate: todayISO(), checkedCount: stats.checkedCount, isFull: stats.isFull, lineCount: stats.lineCount, hasCorners: stats.hasCorners, hasX: stats.hasX, xp: bingoCard.xpAwarded || 0 });
-  if (stats.isFull) bingoLifetimeStats.fullCount += 1;
+  if (stats.isFull) {
+    bingoLifetimeStats.fullCount += 1;
+    bingoRerollTokens += 1;
+    saveBingoRerollTokens();
+  }
   if (stats.lineCount >= 2) bingoLifetimeStats.lines2Count = (bingoLifetimeStats.lines2Count || 0) + 1;
   if (stats.lineCount >= 3) bingoLifetimeStats.lines3Count = (bingoLifetimeStats.lines3Count || 0) + 1;
   if (stats.hasCorners) bingoLifetimeStats.cornersCount = (bingoLifetimeStats.cornersCount || 0) + 1;
