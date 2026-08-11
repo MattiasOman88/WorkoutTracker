@@ -5756,6 +5756,7 @@ function nearCompletionList(n) {
   return ACHIEVEMENTS
     .filter((a) => !unlockedAchievements.includes(a.id) && typeof a.progress === "function" && !a.secret)
     .filter((a) => kampsportAdvancedSectionOpen || !KAMPSPORT_ACHIEVEMENT_IDS.has(a.id))
+    .filter((a) => !a.newGamePlus || platinumUnlockedAt)
     .map((a) => {
       const p = a.progress();
       const ratio = progressRatio(p);
@@ -6181,7 +6182,7 @@ function recentlyUnlockedList(limit) {
 }
 
 function achievementsCardHTML() {
-  const visibleAchievements = ACHIEVEMENTS.filter((a) => kampsportAdvancedSectionOpen || !KAMPSPORT_ACHIEVEMENT_IDS.has(a.id));
+  const visibleAchievements = ACHIEVEMENTS.filter((a) => kampsportAdvancedSectionOpen || !KAMPSPORT_ACHIEVEMENT_IDS.has(a.id)).filter((a) => !a.newGamePlus || platinumUnlockedAt);
   const unlockedCount = unlockedAchievements.filter((id) => visibleAchievements.some((a) => a.id === id)).length;
   const recentUnlocked = hideUnlockedAchievements ? recentlyUnlockedList(8) : [];
   const nearCompletion = nearCompletionList(3);
@@ -6217,8 +6218,8 @@ function achievementsCardHTML() {
               ${recentUnlocked.map(achievementBadgeHTML).join("")}
             </div>
           ` : "") +
-          ACHIEVEMENT_CATEGORIES.filter((cat) => kampsportAdvancedSectionOpen || (cat.label !== "Submissions" && cat.label !== "Submission-bingo")).map((cat) => {
-            let items = cat.ids.map((id) => ACHIEVEMENTS.find((a) => a.id === id)).filter(Boolean);
+          ACHIEVEMENT_CATEGORIES.filter((cat) => kampsportAdvancedSectionOpen || (cat.label !== "Submissions" && cat.label !== "Submission-bingo")).filter((cat) => cat.label !== "New Game+" || platinumUnlockedAt).map((cat) => {
+            let items = cat.ids.map((id) => ACHIEVEMENTS.find((a) => a.id === id)).filter(Boolean).filter((a) => !a.newGamePlus || platinumUnlockedAt);
             if (!kampsportAdvancedSectionOpen) items = items.filter((a) => !KAMPSPORT_ACHIEVEMENT_IDS.has(a.id));
             const catDone = items.filter((a) => unlockedAchievements.includes(a.id)).length;
             if (hideUnlockedAchievements) items = items.filter((a) => !unlockedAchievements.includes(a.id));
