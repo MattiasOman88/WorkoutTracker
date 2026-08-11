@@ -7735,6 +7735,14 @@ function renderTraning() {
         if (submissionsTracked) existing.submissions = [...workoutFormState.submissions]; else delete existing.submissions;
         if (gymSplitTracked) existing.gymSplit = workoutFormState.gymSplit; else delete existing.gymSplit;
         if (ratingsTracked) existing.ratings = { ...workoutFormState.ratings }; else delete existing.ratings;
+        // Samma kryssning av bingo-brickan som vid ett nytt pass - annars
+        // missar man rutor om man lägger till/ändrar submissions på ett
+        // pass i efterhand istället för att sätta dem direkt vid loggning.
+        // checkBingoSquaresForSubmissionIds hoppar redan över redan
+        // ikryssade rutor, så det är säkert att skicka in hela listan igen.
+        if (submissionsTracked && existing.submissions && existing.submissions.length) {
+          checkBingoSquaresForSubmissionIds(existing.submissions);
+        }
         markWeeklyMiscFlag("workoutEditedWeek");
       }
     } else {
