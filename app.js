@@ -4662,7 +4662,7 @@ function levelHeroCardHTML() {
     <div class="card" style="text-align:center">
       <div style="display:flex;align-items:center;justify-content:center;gap:8px">
         ${profileAvatarHTML(40, 3) || ""}
-        <div style="font-size:13px;font-weight:600;color:var(--muted)">${profile.name ? escapeHtml(profile.name) : "Din progression"}</div>
+        <button id="levelHeroNameBtn" style="background:none;border:none;padding:0;font-family:inherit;cursor:pointer;font-size:13px;font-weight:600;color:${tabColors.stats};text-decoration:underline">${profile.name ? escapeHtml(profile.name) : "Namnlös profil"}</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;min-height:40px;margin:6px 0 8px">
         ${isViewingCurrent
@@ -4721,6 +4721,8 @@ function renderLevelHeroCard() {
   wireLevelHeroCardEvents();
 }
 function wireLevelHeroCardEvents() {
+  const nameBtn = document.getElementById("levelHeroNameBtn");
+  if (nameBtn) nameBtn.addEventListener("click", openProfileModal);
   document.querySelectorAll("[data-level-hero-nav]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tiers = activeTierSet();
