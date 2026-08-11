@@ -4644,7 +4644,7 @@ function levelHeroCardHTML() {
         ${profileAvatarHTML(40, 3) || ""}
         <div style="font-size:13px;font-weight:600;color:var(--muted)">${profile.name ? escapeHtml(profile.name) : "Din progression"}</div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;margin:6px 0 8px">
+      <div style="display:flex;align-items:center;justify-content:center;min-height:40px;margin:6px 0 8px">
         ${isViewingCurrent
           ? `<span style="display:inline-flex;align-items:center;font-size:22px;font-weight:800;font-family:inherit;${textStyle}">Level ${info.level}</span>`
           : `<span style="display:inline-flex;align-items:center;font-size:16px;font-weight:800;font-family:inherit;${textStyle}">${escapeHtml(belt.name)} (Lvl ${belt.min}${nextTierMin ? `–${nextTierMin - 1}` : "+"})</span>`}
