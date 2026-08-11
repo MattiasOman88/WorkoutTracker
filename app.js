@@ -8104,7 +8104,7 @@ function calorieHistoryListCardHTML() {
     const remaining = goalTarget !== null ? goalTarget - eaten + burned : null;
     return { date, eaten, burned, remaining };
   });
-  const gridTemplate = "grid-template-columns: 1fr 60px 90px 60px; gap:6px;";
+  const gridTemplate = "grid-template-columns: 1fr 60px 90px 60px 32px; gap:6px;";
   const remainingColor = (r) => r === null ? "var(--muted)" : r < 0 ? "#E15554" : "#4CAF7D";
   return `
     <div class="card">
@@ -8121,6 +8121,7 @@ function calorieHistoryListCardHTML() {
           <span style="color:#E8834A">Ätit</span>
           <span style="color:#4A90D9">Förbrukade</span>
           <span>Kvar</span>
+          <span></span>
         </div>
         <div class="history-scroll" style="max-height:420px">
           ${rows.map((row) => `
@@ -8129,6 +8130,7 @@ function calorieHistoryListCardHTML() {
               <span style="font-size:13px;font-weight:600;color:#E8834A">${row.eaten}</span>
               <span style="font-size:13px;font-weight:600;color:#4A90D9">${row.burned}</span>
               <span style="font-size:13px;font-weight:700;color:${remainingColor(row.remaining)}">${row.remaining !== null ? row.remaining : "–"}</span>
+              <button class="delete-btn" data-del-calorie-day="${row.date}">${ICONS.trash}</button>
             </div>
           `).join("")}
         </div>
@@ -8158,6 +8160,25 @@ function wireCalorieHistoryListCardEvents() {
       renderCalorieHistoryListCard();
     });
   }
+  content.querySelectorAll("[data-del-calorie-day]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const day = btn.dataset.delCalorieDay;
+      const removed = calorieLog.filter((e) => e.date === day);
+      calorieLog = calorieLog.filter((e) => e.date !== day);
+      persistCalorieLog();
+      vibrate(10);
+      renderCalorieHistoryListCard();
+      if (activeTab === "kalorier") renderKalorier();
+      if (removed.length) {
+        showUndoToast(`Kalorier för ${fmtDateWithWeekday(day)} borttaget`, () => {
+          calorieLog.push(...removed);
+          persistCalorieLog();
+          if (activeTab === "kalorier") renderKalorier();
+          renderCalorieHistoryListCard();
+        });
+      }
+    });
+  });
 }
 
 function distributionCardHTML() {
