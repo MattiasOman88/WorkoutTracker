@@ -10748,7 +10748,14 @@ function scheduleCloudPush() {
   cloudSyncStatus = "pending";
   renderSyncStatusIfVisible();
   if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
-  cloudSyncTimer = setTimeout(() => { pushStateToCloud(); }, 2500);
+  // Hämtar+slår ihop molndata FÖRST, varje gång - inte bara vid inloggning.
+  // Annars kunde två enheter som båda är aktiva ungefär samtidigt (inte
+  // bara en ny/tom enhet, utan två med riktig men olika data) fortfarande
+  // skriva över varandra rakt av. Eftersom vår egen lokala ändring redan
+  // fått en färsk tidsstämpel (raden ovan) vinner den jämförelsen normalt,
+  // så vanlig enhets-användning fungerar precis som förut - det är bara
+  // ett skydd för när en ANNAN enhet hunnit ändra något nyare däremellan.
+  cloudSyncTimer = setTimeout(() => { pullAndMergeFromCloud(); }, 2500);
 }
 
 async function pullAndMergeFromCloud() {
