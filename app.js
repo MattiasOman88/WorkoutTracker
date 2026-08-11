@@ -7776,6 +7776,7 @@ function renderTraning() {
     workoutFormState.gymSplit = null;
     workoutFormState.submissions = [];
     workoutFormState.editingId = null;
+    workoutFormState.date = todayISO();
     renderTraning();
   });
 
