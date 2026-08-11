@@ -2357,6 +2357,10 @@ function wireWeightHistoryCardEvents() {
   });
 }
 
+// Sparar vad man håller på att skriva i vikt-formuläret, så att OM sidan
+// av någon anledning ritas om medan man skriver (t.ex. en molnsynk klar i
+// bakgrunden) försvinner inte det man skrivit - det återställs bara.
+let weightFormDraft = { date: null, value: "" };
 function renderVikt() {
   const todayEntry = weightEntries.find((e) => e.date === todayISO());
   const latest = weightEntries[weightEntries.length - 1];
@@ -2382,8 +2386,8 @@ function renderVikt() {
         <button id="manageWeightBtn" style="background:none;border:none;color:${tabColors.vikt};font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;padding:4px">Hantera</button>
       </div>
       <div class="row">
-        <input type="date" id="weightDate" value="${todayISO()}" />
-        <input type="number" inputmode="decimal" step="0.1" placeholder="kg" id="weightValue" enterkeyhint="go" style="max-width:90px" />
+        <input type="date" id="weightDate" value="${weightFormDraft.date || todayISO()}" />
+        <input type="number" inputmode="decimal" step="0.1" placeholder="kg" id="weightValue" enterkeyhint="go" style="max-width:90px" value="${weightFormDraft.value || ""}" />
         <button class="btn-primary" id="weightSubmit" style="background:${tabColors.vikt}">${ICONS.plus}</button>
       </div>
     </div>
@@ -2434,11 +2438,14 @@ function renderVikt() {
     weightEntries.sort((a, b) => a.date.localeCompare(b.date));
     persistWeights();
     vibrate();
+    weightFormDraft = { date: null, value: "" };
     checkAchievements();
     checkWeeklyChallenges();
     awardLogXpForDate("weight", date);
     renderVikt();
   });
+  document.getElementById("weightDate").addEventListener("input", (e) => { weightFormDraft.date = e.target.value; });
+  document.getElementById("weightValue").addEventListener("input", (e) => { weightFormDraft.value = e.target.value; });
   document.getElementById("weightValue").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -10760,6 +10767,7 @@ async function pullAndMergeFromCloud() {
   if (!supabaseClient || !authUser) return;
   cloudSyncStatus = "syncing";
   renderSyncStatusIfVisible();
+  suppressCloudSyncTrigger = true;
   try {
     const { data, error } = await supabaseClient.from("app_state").select("data").eq("user_id", authUser.id).maybeSingle();
     if (error) throw error;
@@ -10782,11 +10790,14 @@ async function pullAndMergeFromCloud() {
     await pullAndMergeLeaderboardVisibilityFromCloud();
     await pullAndMergeSocialSearchableFromCloud();
     pbRankCache = {};
+    suppressCloudSyncTrigger = false;
     await pushStateToCloud();
   } catch (e) {
     cloudSyncStatus = "error";
     cloudSyncErrorMsg = (e && e.message) || "Kunde inte hämta molndata.";
     renderSyncStatusIfVisible();
+  } finally {
+    suppressCloudSyncTrigger = false;
   }
 }
 
@@ -10835,6 +10846,7 @@ let lastPulledUserId = null;
 // ihopslagen profil (t.ex. tom avatar på en nyss inloggad enhet) hinna
 // skrivas över den riktiga molndatan innan den hunnit hämtas hem.
 let initialPullCompletedForUser = null;
+let suppressCloudSyncTrigger = false;
 // Sant när användaren just klickat på en "återställ lösenord"-länk från
 // mejlet. Då visar vi kontosektionen direkt med fokus på att sätta ett
 // nytt lösenord, istället för det vanliga inloggningsläget.
@@ -10921,7 +10933,13 @@ function installCloudSyncHooks() {
     if (typeof original !== "function") return;
     window[name] = function (...args) {
       const result = original.apply(this, args);
-      scheduleCloudPush();
+      // Under en hämtning+ihopslagning anropas t.ex. persistWorkouts()/
+      // persistWeights() bara för att SPARA det redan ihopslagna resultatet
+      // lokalt - inte för att något nytt ändrats som borde pushas. Utan den
+      // här spärren triggade det en oändlig loop: varje synk hämtade+slog
+      // ihop, vilket i sig räknades som "en ändring" och schemalade en NY
+      // synk direkt, om och om igen (var ~2,5:e sekund för alltid).
+      if (!suppressCloudSyncTrigger) scheduleCloudPush();
       return result;
     };
   });
