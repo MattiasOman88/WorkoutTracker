@@ -10738,6 +10738,12 @@ async function pushStateToCloud() {
 // (t.ex. att skriva i ett textfält) inte ger en nätverksanrop per tangenttryckning.
 function scheduleCloudPush() {
   if (!supabaseClient || !authUser) return;
+  // Blockera tills den inledande hämtningen är klar (se
+  // initialPullCompletedForUser) - annars kan en lokal, ännu inte
+  // ihopslagen profil skrivas över molnets riktiga data. Väntar man ut det
+  // här fönstret pushas ändå allt korrekt strax efter, som en del av
+  // hämtningens egen avslutande synk.
+  if (initialPullCompletedForUser !== authUser.id) return;
   localStateUpdatedAt = bumpLocalStateUpdatedAt();
   cloudSyncStatus = "pending";
   renderSyncStatusIfVisible();
@@ -10816,6 +10822,14 @@ async function authChangePassword(newPassword) {
 // UI-feedback) INNAN denna lyssnare hinner triggas - då hade en enkel
 // "gick från utloggad till inloggad"-koll missat hämtningen helt.
 let lastPulledUserId = null;
+// Sant/id när den INLEDANDE hämtningen+ihopslagningen faktiskt är KLAR för
+// den aktuella inloggningen (till skillnad från lastPulledUserId, som bara
+// markerar att den PÅBÖRJATS - satt direkt för att undvika dubbel-hämtning).
+// Så länge den här inte matchar authUser.id blockeras vanliga
+// molnsynk-triggers (se scheduleCloudPush) - annars kan en lokal, ännu inte
+// ihopslagen profil (t.ex. tom avatar på en nyss inloggad enhet) hinna
+// skrivas över den riktiga molndatan innan den hunnit hämtas hem.
+let initialPullCompletedForUser = null;
 // Sant när användaren just klickat på en "återställ lösenord"-länk från
 // mejlet. Då visar vi kontosektionen direkt med fokus på att sätta ett
 // nytt lösenord, istället för det vanliga inloggningsläget.
@@ -10854,11 +10868,12 @@ function initCloudAuth() {
     }
     if (event === "SIGNED_IN" && authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud().then(refreshAfterCloudPull);
+      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); });
     }
     if (event === "SIGNED_OUT") {
       cloudSyncStatus = "offline";
       lastPulledUserId = null;
+      initialPullCompletedForUser = null;
       authRecoveryMode = false;
     }
     render();
@@ -10867,7 +10882,7 @@ function initCloudAuth() {
     authUser = data && data.session && data.session.user ? { id: data.session.user.id, email: data.session.user.email } : null;
     if (authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud().then(refreshAfterCloudPull);
+      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); });
     }
     render();
   });
