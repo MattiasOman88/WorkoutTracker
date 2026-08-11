@@ -7043,15 +7043,46 @@ function wireSenastePassenCardEvents() {
       const removed = workoutEntries.find((e) => e.id === btn.dataset.delWorkout);
       workoutEntries = workoutEntries.filter((e) => e.id !== btn.dataset.delWorkout);
       persistWorkouts();
+      // Ta bort den auto-tillagda "kalorier förbrukade"-posten som skapades
+      // när passet loggades, annars blir den kvar övergiven i Kalorier-
+      // fliken. Nyare pass har en direkt koppling (autoFromWorkoutId); för
+      // äldre poster utan koppling görs en försiktig gissning (samma datum,
+      // typ "burned", exakt samma kcal som standardvärdet för passtypen) -
+      // bara om det finns EN sådan kandidat, för att aldrig råka ta bort en
+      // manuellt tillagd post av misstag.
+      let removedCalorie = null;
+      if (removed) {
+        const linkedIdx = calorieLog.findIndex((c) => c.autoFromWorkoutId === removed.id);
+        if (linkedIdx !== -1) {
+          removedCalorie = calorieLog[linkedIdx];
+          calorieLog.splice(linkedIdx, 1);
+        } else {
+          const defaultKcal = parseInt(DEFAULT_KCAL_BURNED[removed.type], 10);
+          if (!isNaN(defaultKcal) && defaultKcal > 0) {
+            const candidates = calorieLog.filter((c) => c.type === "burned" && c.date === removed.date && c.kcal === defaultKcal && !c.autoFromWorkoutId);
+            if (candidates.length === 1) {
+              removedCalorie = candidates[0];
+              calorieLog = calorieLog.filter((c) => c.id !== removedCalorie.id);
+            }
+          }
+        }
+        if (removedCalorie) persistCalorieLog();
+      }
       vibrate(10);
       renderSenastePassenCard();
+      if (activeTab === "kalorier") renderKalorier();
       if (removed) {
         const label = removed.type === "Ovrigt" && removed.customLabel ? removed.customLabel : typeMeta(removed.type).label;
         showUndoToast(`${label} borttaget`, () => {
           workoutEntries.push(removed);
           workoutEntries.sort((a, b) => b.date.localeCompare(a.date));
           persistWorkouts();
+          if (removedCalorie) {
+            calorieLog.push(removedCalorie);
+            persistCalorieLog();
+          }
           if (activeTab === "traning") renderSenastePassenCard();
+          if (activeTab === "kalorier") renderKalorier();
         });
       }
     });
@@ -7706,7 +7737,7 @@ function renderTraning() {
       }
       const autoKcal = parseInt(DEFAULT_KCAL_BURNED[entry.type], 10);
       if (!isNaN(autoKcal) && autoKcal > 0) {
-        calorieLog.push({ id: uid(), date: entry.date, kcal: autoKcal, type: "burned" });
+        calorieLog.push({ id: uid(), date: entry.date, kcal: autoKcal, type: "burned", autoFromWorkoutId: entry.id });
         persistCalorieLog();
       }
       awardLogXpForDate("training", entry.date);
