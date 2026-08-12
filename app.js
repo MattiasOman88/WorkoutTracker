@@ -2162,6 +2162,188 @@ modalRootEl.addEventListener("touchend", (e) => {
   if (dx > 0 && modalRootEl.innerHTML.trim()) history.back();
 }, { passive: true });
 
+/* ---------------- Påskägg ---------------- */
+
+function triggerConfettiBurst(rainbow) {
+  const existing = document.querySelector(".easter-confetti-overlay");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.className = "easter-confetti-overlay" + (rainbow ? " rainbow" : "");
+  overlay.innerHTML = Array.from({ length: 40 }).map((_, i) => `<span style="--i:${i}"></span>`).join("");
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 3200);
+}
+
+// 1) Tryck på loggan i sidhuvudet 10 gånger i rad (inom 3s mellan varje
+// tryck, annars nollställs räknaren) -> konfetti + skämtsam text.
+(() => {
+  let tapCount = 0;
+  let tapTimer = null;
+  const icon = document.getElementById("appHeaderIcon");
+  if (!icon) return;
+  icon.addEventListener("click", () => {
+    tapCount += 1;
+    if (tapTimer) clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => { tapCount = 0; }, 3000);
+    if (tapCount >= 10) {
+      tapCount = 0;
+      clearTimeout(tapTimer);
+      triggerConfettiBurst(false);
+      showInfoToast("🎉 Du hittade det! Inget mer händer, bara lite glitter.");
+      vibrate(15);
+    }
+  });
+})();
+
+// 2) Konami-koden (tangentbord): upp upp ner ner vänster höger vänster
+// höger B A -> regnbågskonfetti + skämtsam text.
+(() => {
+  const sequence = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
+  let progress = 0;
+  document.addEventListener("keydown", (e) => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const expected = sequence[progress];
+    if (key === expected) {
+      progress += 1;
+      if (progress === sequence.length) {
+        progress = 0;
+        triggerConfettiBurst(true);
+        showInfoToast("🕹️ KONAMI! +0 XP (tyvärr, du måste fortfarande träna själv)");
+      }
+    } else {
+      progress = key === sequence[0] ? 1 : 0;
+    }
+  });
+})();
+
+// 3) Long-press på "Level X"-siffran -> en fånig kommentar om "sann XP".
+// Händelsedelegering på hela dokumentet (inte direkt på elementet) - texten
+// ritas om med ett helt nytt element varje gång man byter flik/nivå, så en
+// direktkopplad lyssnare hade tappats vid varje omritning.
+(() => {
+  const LEVEL_JOKES = [
+    "Sann XP: oräknelig 💪",
+    "I andarnas värld är du redan Level 999.",
+    "XP kan inte mäta hur trött du är just nu.",
+    "Enligt mammor överallt: du är redan bäst.",
+  ];
+  let pressTimer = null;
+  let pressStartX = 0, pressStartY = 0;
+  const isLevelText = (el) => el.closest && el.closest("#levelHeroCardWrap span[style*='font-weight:800']");
+  const start = (el, x, y) => {
+    pressStartX = x; pressStartY = y;
+    pressTimer = setTimeout(() => {
+      showInfoToast(LEVEL_JOKES[Math.floor(Math.random() * LEVEL_JOKES.length)]);
+      vibrate(15);
+    }, 650);
+  };
+  const cancel = () => { if (pressTimer) clearTimeout(pressTimer); };
+  document.addEventListener("touchstart", (e) => {
+    const el = isLevelText(e.target);
+    if (!el) return;
+    const t = e.touches[0];
+    start(el, t.clientX, t.clientY);
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - pressStartX) > 12 || Math.abs(t.clientY - pressStartY) > 12) cancel();
+  }, { passive: true });
+  document.addEventListener("touchend", cancel, { passive: true });
+  document.addEventListener("mousedown", (e) => {
+    const el = isLevelText(e.target);
+    if (!el) return;
+    start(el, e.clientX, e.clientY);
+  });
+  document.addEventListener("mouseup", cancel);
+})();
+
+// 4) Hemligt ord i en anteckningsruta ("sensei") -> dold hälsning, en gång
+// per session (inte varje tangenttryck).
+(() => {
+  let triggered = false;
+  document.addEventListener("input", (e) => {
+    if (triggered) return;
+    const el = e.target;
+    if (!el || el.tagName !== "TEXTAREA" && el.type !== "text") return;
+    if (typeof el.value === "string" && el.value.toLowerCase().includes("sensei")) {
+      triggered = true;
+      showInfoToast("🥋 Osu, sensei! Fortsätt så.");
+    }
+  });
+})();
+
+// 5) 1 april -> en skämtsam hälsning vid appstart, en gång per dag.
+(() => {
+  const today = new Date();
+  if (today.getMonth() !== 3 || today.getDate() !== 1) return;
+  const key = "april_fools_shown_" + todayISO();
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+  } catch (e) { /* ignore */ }
+  setTimeout(() => showInfoToast("😄 Grattis, du tränar även på skämtdagen!"), 1200);
+})();
+
+// 6) Tryck 8 gånger på XP-förloppsstapeln (progressbaren under "Level X")
+// -> konfetti + skämtsam text. Samma återkopplings-mönster som loggan.
+(() => {
+  let tapCount = 0;
+  let tapTimer = null;
+  document.addEventListener("click", (e) => {
+    const bar = e.target.closest && e.target.closest("#levelHeroCardWrap > div > div[style*='border-radius:999px']");
+    if (!bar) return;
+    tapCount += 1;
+    if (tapTimer) clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => { tapCount = 0; }, 3000);
+    if (tapCount >= 8) {
+      tapCount = 0;
+      clearTimeout(tapTimer);
+      triggerConfettiBurst(false);
+      showInfoToast("📊 Stapeln vet allt. Stapeln dömer inte.");
+      vibrate(15);
+    }
+  });
+})();
+
+// 7) Vänd telefonen upp och ner -> gränssnittet "snurrar till" och rättar
+// sig, helt kosmetiskt. Kräver rörelsebehörighet på iOS (frågas första
+// gången) - misslyckas den tyst, ingen funktion går förlorad.
+(() => {
+  let flipping = false;
+  let lastFlipAt = 0;
+  const handleOrientation = (e) => {
+    const beta = e.beta; // -180..180, framåt/bakåt-lutning
+    if (beta === null || typeof beta !== "number") return;
+    const upsideDown = Math.abs(beta) > 150;
+    const now = Date.now();
+    if (upsideDown && !flipping && now - lastFlipAt > 5000) {
+      flipping = true;
+      lastFlipAt = now;
+      document.body.classList.add("easter-flip-active");
+      setTimeout(() => {
+        document.body.classList.remove("easter-flip-active");
+        flipping = false;
+      }, 2200);
+    }
+  };
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    // iOS 13+ kräver ett användar-tryck innan behörighet kan begäras - vi
+    // frågar första gången man rör vid sidhuvudets logga (ändå redan en
+    // knapp man interagerar med för påskägg #1 ovan).
+    const icon = document.getElementById("appHeaderIcon");
+    if (icon) {
+      icon.addEventListener("click", function requestOnce() {
+        DeviceOrientationEvent.requestPermission().then((state) => {
+          if (state === "granted") window.addEventListener("deviceorientation", handleOrientation);
+        }).catch(() => {});
+        icon.removeEventListener("click", requestOnce);
+      }, { once: true });
+    }
+  } else if (typeof DeviceOrientationEvent !== "undefined") {
+    window.addEventListener("deviceorientation", handleOrientation);
+  }
+})();
+
 /* ---------------- VIKT TAB ---------------- */
 
 const WEIGHT_PERIOD_OPTIONS = [

@@ -601,6 +601,31 @@
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
     100% { transform: translateY(340px) rotate(540deg); opacity: 0; }
   }
+  /* --- Påskägg: helskärms-konfetti (logga-tryck, Konami-kod m.fl.) --- */
+  .easter-confetti-overlay {
+    position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden;
+  }
+  .easter-confetti-overlay span {
+    position: absolute; top: -8%; left: calc(var(--i) * 2.5%);
+    width: 7px; height: 12px;
+    background: hsl(calc(var(--i) * 35deg) 80% 55%);
+    animation: easterConfettiFall 2.8s linear forwards;
+    animation-delay: calc(var(--i) * 0.045s);
+  }
+  .easter-confetti-overlay.rainbow span {
+    background: hsl(calc(var(--i) * 23deg) 90% 60%);
+  }
+  @keyframes easterConfettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(115vh) rotate(600deg); opacity: 0; }
+  }
+  /* --- Påskägg: telefonen vänds upp och ner --- */
+  @keyframes easterFlipRighten {
+    0% { transform: rotate(180deg); }
+    70% { transform: rotate(180deg); }
+    100% { transform: rotate(0deg); }
+  }
+  .easter-flip-active #app { animation: easterFlipRighten 2.2s ease-in-out forwards; }
   .modal-sheet { overflow-x: hidden; }
   .undo-toast {
     position: fixed; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
