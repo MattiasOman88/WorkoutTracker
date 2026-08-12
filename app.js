@@ -1863,6 +1863,11 @@ function finishGymSession(minutes) {
     note: summaryLines.join("\n"),
   });
   persistWorkouts();
+  const autoKcal = parseInt(DEFAULT_KCAL_BURNED["Gym"], 10);
+  if (!isNaN(autoKcal) && autoKcal > 0) {
+    calorieLog.push({ id: uid(), date: activeGymSession.date, kcal: autoKcal, type: "burned", autoFromWorkoutId: workoutEntries[0].id });
+    persistCalorieLog();
+  }
   gymSessionHistory.push({
     id: activeGymSession.id,
     splitId: activeGymSession.splitId,
@@ -9368,6 +9373,11 @@ function renderKalorier() {
         <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 800" id="calorieKcalInput" enterkeyhint="go" style="max-width:140px" />
         <button class="btn-primary" id="calorieAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
+      <div class="field-label" style="margin-bottom:4px">Bara protein</div>
+      <div class="row" style="margin-bottom:10px">
+        <input type="number" inputmode="numeric" placeholder="protein (g), t.ex. 30" id="proteinOnlyInput" enterkeyhint="go" style="max-width:160px" />
+        <button class="btn-primary" id="proteinOnlyAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
+      </div>
       <div class="field-label" style="margin-bottom:4px">Kalorier förbrukade</div>
       <div class="row" style="flex-wrap:wrap;margin-bottom:10px">
         ${quickPresets.burned.map((p) => `<button class="chip" data-quick-burned="${p.kcal}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
@@ -9522,6 +9532,27 @@ function renderKalorier() {
     });
     document.getElementById("calorieKcalInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); calorieBtn.click(); }
+    });
+  }
+  const proteinOnlyBtn = document.getElementById("proteinOnlyAddBtn");
+  if (proteinOnlyBtn) {
+    proteinOnlyBtn.addEventListener("click", () => {
+      const input = document.getElementById("proteinOnlyInput");
+      const num = parseFloat(String(input.value).replace(",", "."));
+      if (isNaN(num) || num <= 0) return;
+      // kcal:0 så den inte påverkar "Ätit"-summan - loggas bara på
+      // proteindelen, kaloriera tas separat vid sidan om (t.ex. via en
+      // vanlig kcal-loggning eller livsmedelssök).
+      calorieLog.push({ id: uid(), date: calorieLogDate, kcal: 0, type: "eaten", protein: num, label: "Protein" });
+      persistCalorieLog();
+      vibrate();
+      checkAchievements();
+      checkWeeklyChallenges();
+      awardLogXpForDate("calorie", calorieLogDate);
+      renderKalorier();
+    });
+    document.getElementById("proteinOnlyInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); proteinOnlyBtn.click(); }
     });
   }
   const burnedBtn = document.getElementById("burnedAddBtn");
