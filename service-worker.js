@@ -1,4 +1,4 @@
-const CACHE_NAME = "traningslogg-v383";
+const CACHE_NAME = "traningslogg-v384";
 const ASSETS = [
   "./index.html",
   "./app.js",

@@ -8843,9 +8843,11 @@ function renderFoodMatchArea() {
     renderFoodResultsArea();
   }
 }
+let foodSearchLatestQuery = "";
 async function searchFoodOFF(query) {
   const key = query.trim().toLowerCase();
   if (!key) return;
+  foodSearchLatestQuery = key;
   if (foodSearchCache[key]) {
     foodSearchResults = foodSearchCache[key];
     foodSearchStatus = "done";
@@ -8860,11 +8862,18 @@ async function searchFoodOFF(query) {
     const res = await fetch(url);
     if (!res.ok) throw new Error("bad response");
     const data = await res.json();
+    // Om användaren hunnit skriva vidare (eller ta bort en bokstav) medan
+    // den här sökningen låg ute, är svaret inaktuellt - strunta i det så
+    // det inte råkar skriva över ett nyare, redan visat resultat (eller
+    // tvärtom, visa ett gammalt fel trots att den senaste sökningen faktiskt
+    // lyckades).
+    if (key !== foodSearchLatestQuery) return;
     const products = (data.products || []).map(parseOffProduct).filter(Boolean).slice(0, 15);
     foodSearchCache[key] = products;
     foodSearchResults = products;
     foodSearchStatus = "done";
   } catch (e) {
+    if (key !== foodSearchLatestQuery) return;
     foodSearchStatus = "error";
   }
   renderFoodMatchArea();
@@ -9370,12 +9379,12 @@ function renderKalorier() {
         ${quickPresets.eaten.map((p, i) => `<button class="chip" data-quick-eaten-idx="${i}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
       </div>
       <div class="row" style="margin-bottom:10px">
-        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 800" id="calorieKcalInput" enterkeyhint="go" style="max-width:140px" />
+        <input type="number" inputmode="numeric" placeholder="Kcal" id="calorieKcalInput" enterkeyhint="go" style="max-width:160px" />
         <button class="btn-primary" id="calorieAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
       <div class="field-label" style="margin-bottom:4px">Bara protein</div>
       <div class="row" style="margin-bottom:10px">
-        <input type="number" inputmode="numeric" placeholder="protein (g), t.ex. 30" id="proteinOnlyInput" enterkeyhint="go" style="max-width:160px" />
+        <input type="number" inputmode="numeric" placeholder="Protein (g)" id="proteinOnlyInput" enterkeyhint="go" style="max-width:160px" />
         <button class="btn-primary" id="proteinOnlyAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
       <div class="field-label" style="margin-bottom:4px">Kalorier förbrukade</div>
@@ -9383,7 +9392,7 @@ function renderKalorier() {
         ${quickPresets.burned.map((p) => `<button class="chip" data-quick-burned="${p.kcal}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
       </div>
       <div class="row">
-        <input type="number" inputmode="numeric" placeholder="kcal, t.ex. 300" id="burnedKcalInput" enterkeyhint="go" style="max-width:140px" />
+        <input type="number" inputmode="numeric" placeholder="Kcal" id="burnedKcalInput" enterkeyhint="go" style="max-width:160px" />
         <button class="btn-primary" id="burnedAddBtn" style="background:${tabColors.kalorier}">${ICONS.plus}</button>
       </div>
       <div style="display:flex;justify-content:space-around;text-align:center;margin-top:14px">
