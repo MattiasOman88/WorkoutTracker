@@ -8848,13 +8848,17 @@ function parseOffProduct(p) {
 const LIVSMEDELSVERKET_BASE = "https://dataportal.livsmedelsverket.se/livsmedel/api/v1";
 let livsmedelsverketListCache = null;
 let livsmedelsverketListPromise = null;
+let livsmedelsverketRawResponseSample = null;
 function fetchLivsmedelsverketList() {
   if (livsmedelsverketListCache) return Promise.resolve(livsmedelsverketListCache);
   if (livsmedelsverketListPromise) return livsmedelsverketListPromise;
   livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel`)
-    .then((res) => { if (!res.ok) throw new Error("bad response"); return res.json(); })
+    .then((res) => { if (!res.ok) throw new Error(`bad response: HTTP ${res.status}`); return res.json(); })
     .then((data) => {
-      livsmedelsverketListCache = Array.isArray(data) ? data : (data.value || data.items || []);
+      livsmedelsverketRawResponseSample = Array.isArray(data)
+        ? { topLevelType: "array", length: data.length, first: data[0] }
+        : { topLevelType: typeof data, keys: data && typeof data === "object" ? Object.keys(data) : null, raw: data };
+      livsmedelsverketListCache = Array.isArray(data) ? data : (data.value || data.items || data.Livsmedel || data.livsmedel || []);
       return livsmedelsverketListCache;
     })
     .catch((e) => { livsmedelsverketListPromise = null; throw e; });
@@ -8927,6 +8931,8 @@ async function searchFoodOFF(query) {
   // TILLFÄLLIGT: bara Livsmedelsverket, för att isolera och felsöka -
   // OFF avstängt tills vi vet att Livsmedelsverket faktiskt funkar.
   try {
+    const list = await fetchLivsmedelsverketList();
+    foodSearchDebugError = `Lista hämtad. Antal poster: ${list.length}. Rått svar (topnivå): ${JSON.stringify(livsmedelsverketRawResponseSample).slice(0, 500)}`;
     foodSearchResults = await searchFoodLivsmedelsverket(key);
   } catch (e) {
     foodSearchDebugError = (e && e.message) || String(e);
