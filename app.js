@@ -8908,6 +8908,7 @@ function renderFoodMatchArea() {
   }
 }
 let foodSearchLatestQuery = "";
+let foodSearchDebugError = "";
 async function searchFoodOFF(query) {
   const key = query.trim().toLowerCase();
   if (!key) return;
@@ -8920,40 +8921,20 @@ async function searchFoodOFF(query) {
   }
   foodSearchStatus = "loading";
   foodSearchResults = [];
+  foodSearchDebugError = "";
   renderFoodMatchArea();
 
-  // Livsmedelsverket och Open Food Facts söks parallellt - Livsmedelsverkets
-  // träffar (bättre svenska råvaror) visas först, OFF:s därefter. Om den ena
-  // källan strular (t.ex. Livsmedelsverket blockerar webbläsaranrop) syns
-  // det bara som färre resultat från den källan, inte ett hårt fel - OFF:s
-  // resultat visas ändå som förut.
-  const partial = { livs: null, off: null };
-  const applyMerge = () => {
-    if (key !== foodSearchLatestQuery) return;
-    foodSearchResults = [...(partial.livs || []), ...(partial.off || [])];
-    foodSearchStatus = "done";
-    renderFoodMatchArea();
-  };
-
-  const livsPromise = searchFoodLivsmedelsverket(key)
-    .then((r) => { partial.livs = r; applyMerge(); })
-    .catch(() => { partial.livs = []; applyMerge(); });
-
-  const offPromise = (async () => {
-    try {
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(key)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,generic_name,brands,nutriments`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("bad response");
-      const data = await res.json();
-      partial.off = (data.products || []).map(parseOffProduct).filter(Boolean).slice(0, 15);
-    } catch (e) {
-      partial.off = [];
-    }
-    applyMerge();
-  })();
-
-  await Promise.all([livsPromise, offPromise]);
-  if (key === foodSearchLatestQuery) foodSearchCache[key] = foodSearchResults;
+  // TILLFÄLLIGT: bara Livsmedelsverket, för att isolera och felsöka -
+  // OFF avstängt tills vi vet att Livsmedelsverket faktiskt funkar.
+  try {
+    foodSearchResults = await searchFoodLivsmedelsverket(key);
+  } catch (e) {
+    foodSearchDebugError = (e && e.message) || String(e);
+  }
+  if (key !== foodSearchLatestQuery) return;
+  foodSearchStatus = "done";
+  foodSearchCache[key] = foodSearchResults;
+  renderFoodMatchArea();
 }
 
 function isFoodFavorited(p) {
@@ -9016,6 +8997,7 @@ function mealBuilderSearchResultsHTML() {
     ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
     ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat.</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar.</p>` : ""}
+    ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Fellogg (tillfälligt, för felsökning): ${escapeHtml(foodSearchDebugError)}</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
       <div class="history-scroll" style="max-height:260px">
         ${foodSearchResults.map((p, i) => `
@@ -9076,6 +9058,7 @@ function foodResultsAreaHTML() {
       ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
       ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat. Kontrollera internetanslutningen och försök igen.</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar. Prova ett annat sökord, eller logga kcal manuellt ovan.</p>` : ""}
+      ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Fellogg (tillfälligt, för felsökning): ${escapeHtml(foodSearchDebugError)}</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
         <div class="history-scroll" style="max-height:320px">
           ${foodSearchResults.map((p, i) => `
