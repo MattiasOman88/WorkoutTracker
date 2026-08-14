@@ -1,5 +1,9 @@
 /* ---------------- Data & constants ---------------- */
 
+// Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
+// visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
+const APP_VERSION = "v391";
+
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
   { key: "Skadad", label: "Skadad", color: "#E15554" },
@@ -13585,7 +13589,7 @@ function openAboutModal() {
         <div style="text-align:center;padding:8px 0">
           <img src="${APP_ICON_IMG}" alt="Workout Tracker" style="width:64px;height:64px;border-radius:16px" />
           <div style="font-size:19px;font-weight:700;margin-top:8px">Workout Tracker</div>
-          <div style="font-size:12.5px;color:var(--muted2);margin-top:2px">Version 1.0</div>
+          <div style="font-size:12.5px;color:var(--muted2);margin-top:2px">Version ${APP_VERSION}</div>
         </div>
         <p style="text-align:center">En personlig träningsapp som hjälper dig att  följa din vikt, träning och utveckling!</p>
 
