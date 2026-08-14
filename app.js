@@ -4899,7 +4899,7 @@ function levelHeroCardHTML() {
       <div style="display:flex;align-items:center;justify-content:center;gap:8px">
         <div style="position:relative;display:inline-flex">
           ${profileAvatarHTML(40, 3) || ""}
-          ${incomingFriendRequestsCount > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:#E15554;border:2px solid var(--card-bg)"></span>` : ""}
+          ${incomingFriendRequestsCount > 0 ? `<span style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:#E15554;border:2px solid var(--card-bg);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px">${incomingFriendRequestsCount > 9 ? "9+" : incomingFriendRequestsCount}</span>` : ""}
         </div>
         <button id="levelHeroNameBtn" style="background:none;border:none;padding:0;font-family:inherit;cursor:pointer;font-size:13px;font-weight:600;color:${tabColors.stats};text-decoration:underline">${profile.name ? escapeHtml(profile.name) : "Namnlös profil"}</button>
       </div>
