@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v391";
+const APP_VERSION = "v392";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -7474,7 +7474,7 @@ function gymSessionViewHTML() {
           <div class="card-label" style="margin-bottom:0">🏋️ ${escapeHtml(splitLabel)}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDateWithWeekday(s.date)}</div>
         </div>
-        <button class="modal-btn secondary" id="pauseGymSessionBtn" style="width:auto;padding:9px 16px">⏸️ Pausa</button>
+        <button class="modal-btn" id="pauseGymSessionBtn" style="width:auto;padding:9px 16px;background:#EAB308;color:#0F1115">⏸️ Pausa</button>
       </div>
     </div>
 
@@ -7648,7 +7648,7 @@ function renderTraning() {
         </div>
         <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px">
           <button class="modal-btn primary" id="resumeGymSessionBtn" style="width:auto;padding:9px 16px">▶️ Fortsätt</button>
-          <button id="cancelGymSessionBtn" style="background:none;border:none;padding:2px;cursor:pointer;font-size:11px;color:var(--muted2);text-decoration:underline">Avbryt passet</button>
+          <button id="cancelGymSessionBtn" style="background:none;border:none;padding:2px;cursor:pointer;font-size:11px;color:#E15554;text-decoration:underline">Avbryt passet</button>
         </div>
       </div>
     </div>
@@ -7751,7 +7751,7 @@ function renderTraning() {
         `).join("")}
       </div>
       ${workoutFormState.gymSplit && !activeGymSession ? `
-        <button class="modal-btn secondary" id="startGymSessionBtn" style="width:100%;margin-top:12px">▶️ Starta pass — logga varje övning</button>
+        <button class="modal-btn" id="startGymSessionBtn" style="width:100%;margin-top:12px;background:#22C55E;color:#0F1115">▶️ Starta pass — logga varje övning</button>
       ` : ""}
     </div>
     ` : ""}
@@ -11315,6 +11315,11 @@ function initCloudAuth() {
 // schemaläggs en molnsynk. Rena UI-lägen (t.ex. ihopfällda kort, debug-bonus)
 // är medvetet uteslutna eftersom de inte är del av synk-payloaden.
 const CLOUD_SYNC_TRIGGER_FNS = [
+  // OBS: "saveActiveGymSession" är MEDVETET inte med här - annars schemalägger
+  // varje vikt/reps-tangenttryck under ett pågående "Starta pass" en molnsynk
+  // 2,5s senare, vilket stör inmatningen mitt i ett pass. Passet sparas ändå
+  // lokalt varje gång, och synkas till molnet som vanligt när man avslutar
+  // det (finishGymSession -> persistWorkouts, som ÄR med nedan).
   "saveTrainingTypes", "saveTabColors", "saveNavGlowColors", "saveThemeMode", "saveHaptics",
   "persistWeights", "persistWorkouts", "saveActivityLevel", "saveProfile", "persistCalorieLog",
   "saveShowCalorieStats", "saveShowSubmissionStats", "saveShowDistributionStats", "saveShowCalorieHistoryList",
@@ -11324,7 +11329,7 @@ const CLOUD_SYNC_TRIGGER_FNS = [
   "saveKampsportAdvancedSectionOpen", "saveMacroSettings", "saveSubmissionsMenuEnabled", "saveSubmissionTypes",
   "saveGymMenuEnabled", "saveGymSplits", "saveKonditionMenuEnabled", "savePbExercises", "persistPbLog",
   "saveShowPbCard", "saveShowPbHistory", "saveKonditionPbDistances", "persistKonditionPbLog", "saveBodyMeasurementsEnabled",
-  "saveBodyMeasurementTypes", "persistBodyMeasurements", "saveGymExercises", "saveActiveGymSession", "saveGymSessionHistory",
+  "saveBodyMeasurementTypes", "persistBodyMeasurements", "saveGymExercises", "saveGymSessionHistory",
   "saveTabOrder", "saveWeightChartPeriod", "saveLevelTheme", "saveUnlockedAchievements", "saveUnlockedAchievementDates",
   "saveLogXp", "saveXpAwardedDates", "saveWeeklyMisc", "saveWeeklyChallengeState", "saveWeeklyChallengeXp",
   "saveWeeklyChallengeHistory", "saveSubmissionBingoEnabled", "saveShowSubmissionBingo", "saveBingoCard", "saveBingoHistory",
