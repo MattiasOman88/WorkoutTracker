@@ -1417,6 +1417,17 @@ let friendSearchLoading = false;
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
 let friendList = [];
+// Hämtas proaktivt efter inloggning/synk (inte bara när man öppnar
+// Vänner-modalen) så en liten badge kan visas redan på Statistik-sidan
+// innan man ens gått in i Profil.
+let incomingFriendRequestsCount = 0;
+async function refreshFriendRequestBadge() {
+  if (!supabaseClient || !authUser) return;
+  try {
+    const res = await supabaseClient.rpc("get_incoming_friend_requests");
+    incomingFriendRequestsCount = Array.isArray(res.data) ? res.data.length : 0;
+  } catch (e) { /* badge visas bara inte - ingen kritisk funktion */ }
+}
 let friendsDataLoaded = false;
 // Egna, privata grupperingar av vänner (t.ex. "BJJ") - bara synliga för en
 // själv, inte delade med vännerna. Sparas i JSON-klumpen (app_state), inte
@@ -4886,7 +4897,10 @@ function levelHeroCardHTML() {
   return `
     <div class="card" style="text-align:center">
       <div style="display:flex;align-items:center;justify-content:center;gap:8px">
-        ${profileAvatarHTML(40, 3) || ""}
+        <div style="position:relative;display:inline-flex">
+          ${profileAvatarHTML(40, 3) || ""}
+          ${incomingFriendRequestsCount > 0 ? `<span style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:#E15554;border:2px solid var(--card-bg)"></span>` : ""}
+        </div>
         <button id="levelHeroNameBtn" style="background:none;border:none;padding:0;font-family:inherit;cursor:pointer;font-size:13px;font-weight:600;color:${tabColors.stats};text-decoration:underline">${profile.name ? escapeHtml(profile.name) : "Namnlös profil"}</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:center;min-height:40px;margin:6px 0 8px">
@@ -6796,6 +6810,8 @@ async function loadFriendsData() {
     incomingFriendRequests = Array.isArray(incomingRes.data) ? incomingRes.data : [];
     outgoingFriendRequests = Array.isArray(outgoingRes.data) ? outgoingRes.data : [];
     friendList = Array.isArray(listRes.data) ? listRes.data : [];
+    incomingFriendRequestsCount = incomingFriendRequests.length;
+    renderLevelHeroCard();
   } catch (e) { /* visas som tom lista */ }
   friendsDataLoaded = true;
 }
@@ -11270,7 +11286,7 @@ function initCloudAuth() {
     }
     if (event === "SIGNED_IN" && authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); });
+      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); refreshFriendRequestBadge().then(() => { renderLevelHeroCard(); }); });
     }
     if (event === "SIGNED_OUT") {
       cloudSyncStatus = "offline";
@@ -11284,7 +11300,7 @@ function initCloudAuth() {
     authUser = data && data.session && data.session.user ? { id: data.session.user.id, email: data.session.user.email } : null;
     if (authUser && lastPulledUserId !== authUser.id) {
       lastPulledUserId = authUser.id;
-      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); });
+      pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); refreshFriendRequestBadge().then(() => { renderLevelHeroCard(); }); });
     }
     render();
   });
@@ -13751,7 +13767,7 @@ function openProfileModal() {
           ` : ""}
         </div>
         <div style="margin-bottom:14px">
-          <button class="modal-btn secondary" id="openFriendsBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px">👥 Vänner</button>
+          <button class="modal-btn secondary" id="openFriendsBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;position:relative">👥 Vänner${incomingFriendRequestsCount > 0 ? `<span style="background:#E15554;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px">${incomingFriendRequestsCount}</span>` : ""}</button>
         </div>
         ` : ramSectionHTML}
         ${kampsportAdvancedSectionOpen ? `
