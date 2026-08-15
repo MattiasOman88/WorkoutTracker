@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v395";
+const APP_VERSION = "v396";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -4399,6 +4399,12 @@ function checkAchievements() {
   if (anyNew) {
     saveUnlockedAchievements();
     saveUnlockedAchievementDates();
+    // Den globala "X% har låst upp"-statistiken hämtas bara en gång och
+    // cachas - annars visar den kvarvarande gamla siffran resten av
+    // sessionen även efter man själv precis låst upp något (vilket
+    // påverkar den globala andelen). Nollställ cachen så nästa titt på en
+    // prestation hämtar en färsk siffra.
+    achievementUnlockStatsCache = undefined;
   }
   if (anyNew && !platinumUnlockedAt && isAllAchievementsUnlocked() && unlockedAchievements.includes("platinum_all")) {
     platinumUnlockedAt = todayISO();
@@ -4417,6 +4423,9 @@ function checkAchievements() {
   });
   autoPrestiged.forEach((a) => {
     celebrationQueue.push({ type: "prestige", achievement: a, count: achievementPrestige[a.id] || 1 });
+    Object.keys(achievementPrestigeStatsCache).forEach((key) => {
+      if (key.startsWith(`${a.id}:`)) delete achievementPrestigeStatsCache[key];
+    });
   });
 
   // OBS: den här kollen låg tidigare inuti "if (anyNew)" ovan, vilket gjorde
