@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v394";
+const APP_VERSION = "v395";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -8501,7 +8501,7 @@ function calorieHistoryListCardHTML() {
     const remaining = goalTarget !== null ? goalTarget - eaten + burned : null;
     return { date, eaten, burned, remaining };
   });
-  const gridTemplate = "grid-template-columns: 1fr 60px 90px 60px 32px; gap:6px;";
+  const gridTemplate = "grid-template-columns: minmax(76px,1fr) 50px 68px 46px 32px; gap:6px;";
   const remainingColor = (r) => r === null ? "var(--muted)" : r < 0 ? "#E15554" : "#4CAF7D";
   return `
     <div class="card">
