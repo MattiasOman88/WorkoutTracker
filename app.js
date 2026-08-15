@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v393";
+const APP_VERSION = "v394";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -4759,7 +4759,7 @@ function weeklyChallengeCardHTML() {
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;${showWeeklyChallenge ? "margin-bottom:8px;" : ""}" id="showWeeklyChallengeToggle">
         <div class="card-label" style="margin-bottom:0">Veckans utmaning <span style="color:var(--muted2);font-weight:600">${doneCount}/3</span></div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:11px;color:var(--muted2)">till ${fmtDateShort(weekEnd)}</span>
+          <span style="font-size:11px;color:var(--muted2)">till och med ${fmtDateShort(weekEnd)}</span>
           <span class="icon-14" style="color:var(--muted2);display:flex;transform:rotate(${showWeeklyChallenge ? "90" : "0"}deg);transition:transform .15s">${ICONS.chevronRight}</span>
         </div>
       </div>
