@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v392";
+const APP_VERSION = "v393";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -4415,13 +4415,9 @@ function checkAchievements() {
       autoPrestiged.push(a);
     }
   });
-  if (autoPrestiged.length === 1) {
-    const a = autoPrestiged[0];
-    showInfoToast(`🏅 ${a.title} ×${(achievementPrestige[a.id] || 0) + 1} — +${a.xp} XP`);
-  } else if (autoPrestiged.length > 1) {
-    const totalGained = autoPrestiged.reduce((sum, a) => sum + a.xp, 0);
-    showInfoToast(`🏅 ${autoPrestiged.length} prestationer prestigeade automatiskt — +${totalGained} XP`);
-  }
+  autoPrestiged.forEach((a) => {
+    celebrationQueue.push({ type: "prestige", achievement: a, count: achievementPrestige[a.id] || 1 });
+  });
 
   // OBS: den här kollen låg tidigare inuti "if (anyNew)" ovan, vilket gjorde
   // att level-up-firandet (popup + ljud) bara visades om en prestation ÄVEN
@@ -4462,7 +4458,26 @@ function showNextCelebration() {
   overlay.id = "celebrationOverlay";
   overlay.className = "celebration-overlay";
 
-  if (item.type === "achievement") {
+  if (item.type === "prestige") {
+    const a = item.achievement;
+    const hasBadgeImg = !!a.badgeImage;
+    const iconHTML = hasBadgeImg
+      ? `<img src="${a.badgeImage}" alt="${a.title}" class="achievement-badge-pop" />`
+      : a.emoji
+      ? `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="font-size:32px;line-height:1">${a.emoji}</span></div>`
+      : `<div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="width:34px;height:34px;display:flex">${ICONS[a.icon]}</span></div>`;
+    overlay.innerHTML = `
+      <div class="celebration-card" style="${hasBadgeImg ? "padding-top:96px" : ""}">
+        ${iconHTML}
+        <div class="celebration-title" style="${hasBadgeImg ? "margin-top:4px" : ""}">🏅 Prestige!</div>
+        <div class="celebration-sub">Du klarade den här igen</div>
+        <div class="celebration-achievement">${escapeHtml(a.title)} ×${item.count}</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${escapeHtml(a.desc)}</div>
+        <div class="celebration-xp" style="color:${tabColors.stats}">+${a.xp} XP</div>
+        <button class="modal-btn primary" id="celebrationNextBtn">Toppen!</button>
+      </div>
+    `;
+  } else if (item.type === "achievement") {
     const a = item.achievement;
     const hasBadgeImg = !!a.badgeImage;
     const iconHTML = hasBadgeImg
@@ -11281,6 +11296,17 @@ function refreshAfterCloudPull() {
 
 function initCloudAuth() {
   if (!supabaseClient) return;
+  // onAuthStateChange (fortlöpande lyssnare för ALLA framtida inloggnings-
+  // händelser) och getSession (en engångskoll vid start) löser ofta upp sig
+  // nästan samtidigt vid appstart och ritade tidigare om sidan VAR FÖR SIG,
+  // trots att de landar i samma slutresultat - därav att t.ex. vikten sågs
+  // uppdateras flera gånger i rad direkt vid start. Oavsett vilken av de
+  // två som råkar bli klar först ritas bara EN gång för själva
+  // uppstarts-upplösningen; alla senare händelser (utloggning, ny
+  // inloggning osv, dvs onAuthStateChange:s andra anrop och framåt) ritar
+  // fortfarande om som vanligt.
+  let bootRenderDone = false;
+  let authListenerCallCount = 0;
   supabaseClient.auth.onAuthStateChange((event, session) => {
     authUser = session && session.user ? { id: session.user.id, email: session.user.email } : null;
     if (event === "PASSWORD_RECOVERY") {
@@ -11298,7 +11324,12 @@ function initCloudAuth() {
       initialPullCompletedForUser = null;
       authRecoveryMode = false;
     }
-    render();
+    authListenerCallCount += 1;
+    if (authListenerCallCount === 1) {
+      if (!bootRenderDone) { bootRenderDone = true; render(); }
+    } else {
+      render();
+    }
   });
   supabaseClient.auth.getSession().then(({ data }) => {
     authUser = data && data.session && data.session.user ? { id: data.session.user.id, email: data.session.user.email } : null;
@@ -11306,7 +11337,7 @@ function initCloudAuth() {
       lastPulledUserId = authUser.id;
       pullAndMergeFromCloud().then(() => { initialPullCompletedForUser = authUser.id; refreshAfterCloudPull(); refreshFriendRequestBadge().then(() => { renderLevelHeroCard(); }); });
     }
-    render();
+    if (!bootRenderDone) { bootRenderDone = true; render(); }
   });
 }
 
