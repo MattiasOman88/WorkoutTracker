@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v396";
+const APP_VERSION = "v397";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -442,6 +442,7 @@ const PROFILE_FRAMES = {
   eldringJakt: { label: "Eldring-jakt", type: "jaktChase", color: "#E24B4A", color2: "#EF9F27" },
   frostringJakt: { label: "Frostring-jakt", type: "jaktChase", color: "#2DE0FF", color2: "#C8F0FF" },
   eldFrostCombo: { label: "Eld (långsam) + Frost (snabb)", type: "eldFrostCombo" },
+  pinball: { label: "Flipperboll", type: "pinball", color: "#F5A623" },
   allaMinaRamar: { label: "Alla animationer", type: "cycleAll" },
 };
 // Nivå 1-50 är de befintliga effekterna, de fem första bara 1 steg isär så de
@@ -454,7 +455,7 @@ const PROFILE_FRAME_UNLOCK_LEVEL = {
   fireRing: 10, frostRing: 15, sonarRainbow: 20, glitterRainbow: 25,
   chaseDotsRainbow: 30, chaseDotsRainbow5: 35, dualComet: 40, dualCometRainbow: 45, rainbow: 50,
   cometJaktLilaRosa: 55, diamantJakt: 60, silverGuldDiamant: 65,
-  eldringJakt: 70, frostringJakt: 75, eldFrostCombo: 80, allaMinaRamar: 85,
+  eldringJakt: 70, frostringJakt: 75, eldFrostCombo: 80, pinball: 82, allaMinaRamar: 85,
 };
 // Migrering av äldre/borttagna nycklar till sina närmaste nya motsvarigheter,
 // så ingen tappar sitt val bara för att katalogen ändrats.
@@ -508,6 +509,7 @@ function profileFrameWrapStyle(frameKey, padding, shape) {
   }
   if (f.type === "fullShift") return { className: "avatar-frame-fullshift" + shapeClass, style: base };
   if (f.type === "eldFrostCombo") return { className: "avatar-frame-eldfrostcombo" + shapeClass, style: base };
+  if (f.type === "pinball") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.5)}` };
   if (f.type === "cycleAll") return { className: "avatar-frame-cycleall" + shapeClass, style: base };
   return { className: "" + (isOctagon ? "frame-shape-octagon" : ""), style: `${base};background:${f.color};${isOctagon ? `filter:drop-shadow(0 0 5px ${f.glow})` : `box-shadow:0 0 10px ${f.glow}`}` };
 }
@@ -532,7 +534,9 @@ function profileAvatarHTML(size, padding) {
   const frameKey = resolveProfileFrame();
   const frame = profileFrameWrapStyle(frameKey, padding);
   const cycleAttrs = frameKey === "allaMinaRamar" ? ` data-cycle-all="1" data-cycle-padding="${padding}" data-cycle-shape="circle"` : "";
-  return `<div class="${frame.className}" style="${frame.style}"${cycleAttrs}><img src="${profile.avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" /></div>`;
+  const pinballAttrs = frameKey === "pinball" ? ` data-pinball="1"` : "";
+  const pinballBallHTML = frameKey === "pinball" ? `<span class="pinball-ball"></span>` : "";
+  return `<div class="${frame.className}" style="${frame.style}"${cycleAttrs}${pinballAttrs}><img src="${profile.avatar}" alt="Profilbild" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block" />${pinballBallHTML}</div>`;
 }
 // De 10 animerade "special"-effekterna - delas mellan profilramen och
 // Flikfärgens glow-väljare. De vanliga solida färgerna väljs som vanligt via
@@ -583,9 +587,21 @@ function initCycleAllFrames() {
     // stunden, oavsett när de skapades.
     const applyFrame = () => {
       const idx = Math.floor(Date.now() / tickMs) % keys.length;
-      const swatch = profileFrameWrapStyle(keys[idx], padding, shape);
+      const key = keys[idx];
+      const swatch = profileFrameWrapStyle(key, padding, shape);
       el.className = swatch.className;
       el.setAttribute("style", swatch.style);
+      // Pinball behöver en extra bollruta i DOM:en (inte bara klass/stil som
+      // de andra) - lägg till/ta bort den efter behov när cykeln snurrar in
+      // eller ut ur just den ramen.
+      if (key === "pinball") {
+        el.setAttribute("data-pinball", "1");
+        if (!el.querySelector(".pinball-ball")) el.insertAdjacentHTML("beforeend", '<span class="pinball-ball"></span>');
+      } else {
+        el.removeAttribute("data-pinball");
+        const ball = el.querySelector(".pinball-ball");
+        if (ball) ball.remove();
+      }
     };
     applyFrame();
     const intervalId = setInterval(applyFrame, tickMs);
@@ -606,6 +622,65 @@ const cycleAllObserver = new MutationObserver(() => {
   cycleAllObserverTimer = setTimeout(initCycleAllFrames, 60);
 });
 cycleAllObserver.observe(document.body, { childList: true, subtree: true });
+
+// --- Flipperboll-ramen -------------------------------------------------
+// En boll som studsar runt INUTI cirkeln. För att den ska se "fysiskt
+// korrekt" ut (infallsvinkel = utfallsvinkel mot den runda kanten) utan en
+// riktig fysikmotor: vi lägger N punkter jämnt utspridda på en cirkel och
+// drar räta linjer mellan var K:e punkt (en stjärnpolygon, {N/K}). En sådan
+// stjärna har exakt samma reflektionsvinkel i varje hörn helt automatiskt,
+// tack vare symmetrin - matematiskt en riktig biljard-bana, inte en gissad
+// kurva. N=7, K=3 ger en tät, fin sjustjärna som inte känns repetitiv för
+// snabbt.
+const PINBALL_N = 7;
+const PINBALL_STEP = 3;
+const PINBALL_RADIUS_PCT = 38; // hur nära kanten bollens bana går (% av bildens bredd)
+const PINBALL_SEGMENT_MS = 480; // tid per raksträcka - samma för alla, banan är symmetrisk så farten blir jämn
+const PINBALL_WAYPOINTS = (() => {
+  const order = [];
+  let cur = 0;
+  for (let i = 0; i <= PINBALL_N; i++) { order.push(cur); cur = (cur + PINBALL_STEP) % PINBALL_N; }
+  return order.map((pointIndex) => {
+    const angle = (2 * Math.PI * pointIndex) / PINBALL_N - Math.PI / 2;
+    return { x: 50 + PINBALL_RADIUS_PCT * Math.cos(angle), y: 50 + PINBALL_RADIUS_PCT * Math.sin(angle) };
+  });
+})();
+function pinballPositionAtTime(ms) {
+  const cycleMs = PINBALL_SEGMENT_MS * PINBALL_N;
+  const t = ((ms % cycleMs) + cycleMs) % cycleMs;
+  const segIndex = Math.floor(t / PINBALL_SEGMENT_MS);
+  const segT = (t % PINBALL_SEGMENT_MS) / PINBALL_SEGMENT_MS;
+  const a = PINBALL_WAYPOINTS[segIndex];
+  const b = PINBALL_WAYPOINTS[segIndex + 1];
+  return { x: a.x + (b.x - a.x) * segT, y: a.y + (b.y - a.y) * segT };
+}
+const pinballTracked = new Set();
+let pinballRafId = null;
+function pinballTick() {
+  const now = Date.now();
+  pinballTracked.forEach((el) => {
+    if (!document.contains(el) || !el.hasAttribute("data-pinball")) { pinballTracked.delete(el); return; }
+    const ball = el.querySelector(".pinball-ball");
+    if (!ball) return;
+    const pos = pinballPositionAtTime(now);
+    ball.style.left = pos.x + "%";
+    ball.style.top = pos.y + "%";
+  });
+  pinballRafId = pinballTracked.size ? requestAnimationFrame(pinballTick) : null;
+}
+function initPinballFrames() {
+  document.querySelectorAll("[data-pinball]").forEach((el) => {
+    if (pinballTracked.has(el)) return;
+    pinballTracked.add(el);
+  });
+  if (pinballTracked.size && pinballRafId === null) pinballRafId = requestAnimationFrame(pinballTick);
+}
+let pinballObserverTimer = null;
+const pinballObserver = new MutationObserver(() => {
+  clearTimeout(pinballObserverTimer);
+  pinballObserverTimer = setTimeout(initPinballFrames, 60);
+});
+pinballObserver.observe(document.body, { childList: true, subtree: true });
 
 let calorieLog = loadArr("calorie_log");
 function persistCalorieLog() { saveArr("calorie_log", calorieLog); }
