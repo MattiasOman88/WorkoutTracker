@@ -529,6 +529,27 @@
     z-index: 2; pointer-events: none;
     transform: translate(-50%, -50%);
   }
+  .pinball-comet-head {
+    position: absolute; width: 11%; height: 11%; border-radius: 50%; left: 0; top: 0;
+    background: radial-gradient(circle at 35% 30%, #FFFFFF, #7FD4FF 55%, #1A5C99 100%);
+    box-shadow: 0 0 6px 2px rgba(127,212,255,0.8);
+    z-index: 3; pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+  .pinball-comet-trail {
+    position: absolute; border-radius: 50%; left: 0; top: 0;
+    background: #7FD4FF;
+    z-index: 2; pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+  .pinball-ball-a {
+    background: radial-gradient(circle at 35% 30%, #FFFFFF, #F5A623 55%, #B36A00 100%);
+    box-shadow: 0 0 4px 1px rgba(245,166,35,0.7), 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .pinball-ball-b {
+    background: radial-gradient(circle at 35% 30%, #FFFFFF, #4FC3F7 55%, #0B5D8A 100%);
+    box-shadow: 0 0 4px 1px rgba(79,195,247,0.7), 0 1px 2px rgba(0,0,0,0.5);
+  }
   .avatar-frame-cycleall::before {
     content: ""; position: absolute; inset: 0; border-radius: 50%;
     background: conic-gradient(from 0deg, #FFD24C, #34D97B, #9B6BFF, #FF3DB0, #2DE0FF, #FFD24C);
