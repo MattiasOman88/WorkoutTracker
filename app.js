@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v399";
+const APP_VERSION = "v400";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -479,6 +479,20 @@ function resolveProfileFrame() {
   const currentLevel = computeLevelInfo(totalXp()).level;
   const requiredLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
   if (currentLevel < requiredLevel && !debugForceUnlockCosmetics) return "cometGold";
+  return key;
+}
+// Badgen (Level-badgen, åttkantig) kan ha en EGEN ram, oberoende av
+// profilbildens - profile.badgeFrame är null/tom så länge man inte
+// uttryckligen valt något annat, och då faller den tillbaka på samma val
+// som profilbilden (bakåtkompatibelt med hur det fungerade innan).
+function resolveBadgeFrame() {
+  const raw = profile.badgeFrame;
+  if (!raw) return resolveProfileFrame();
+  const key = PROFILE_FRAME_KEY_MIGRATIONS[raw] || raw;
+  if (!key || !PROFILE_FRAMES[key]) return resolveProfileFrame();
+  const currentLevel = computeLevelInfo(totalXp()).level;
+  const requiredLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+  if (currentLevel < requiredLevel && !debugForceUnlockCosmetics) return resolveProfileFrame();
   return key;
 }
 // Bygger style/klass för ramen/glowen runt en bild eller flikikon.
@@ -1324,6 +1338,7 @@ function saveProfileFramePickerExpanded() {
   try { localStorage.setItem("profile_frame_picker_expanded_v1", String(profileFramePickerExpanded)); } catch (e) { /* ignore */ }
 }
 let profileFramePickerExpanded = loadProfileFramePickerExpanded();
+let badgeFramePickerExpanded = false;
 
 function loadBeltBadgeFrameEnabled() {
   try { return localStorage.getItem("belt_badge_frame_enabled_v1") !== "false"; } catch (e) { return true; }
@@ -5134,7 +5149,7 @@ function levelHeroCardHTML() {
             // inställningen inte är avstängd. Aktivt oavsett vilken badge man
             // bläddrat till (nuvarande ELLER tidigare uppnådd) - bara inte på
             // ännu olåsta/framtida badges, som redan är nedtonade.
-            const currentFrameKey = resolveProfileFrame();
+            const currentFrameKey = resolveBadgeFrame();
             const beltRingActive = !isLocked && beltBadgeFrameEnabled
               && FRAME_EFFECT_KEYS.includes(currentFrameKey)
               && (info.level >= (PROFILE_FRAME_UNLOCK_LEVEL[currentFrameKey] || 1) || debugForceUnlockCosmetics);
@@ -13951,6 +13966,38 @@ function openProfileModal() {
           <span class="toggle-slider"></span>
         </label>
       </div>
+      ${beltBadgeFrameEnabled ? `
+      <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
+        ${cardChevronHeaderHTML("badgeFramePickerToggle", "Ram runt badgen", badgeFramePickerExpanded)}
+        ${badgeFramePickerExpanded ? `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:6px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
+            <button data-badge-frame="" aria-label="Samma som profilbilden" title="Samma som profilbilden" style="width:36px;height:36px;border-radius:50%;padding:2px;border:1.5px solid ${!profile.badgeFrame ? tabColors.stats : "transparent"};background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted)">${ICONS.userCircle}</button>
+          </div>
+          ${(() => {
+            const currentLevel = computeLevelInfo(totalXp()).level;
+            const currentBadgeFrame = resolveBadgeFrame();
+            return Object.keys(PROFILE_FRAMES).map((key) => {
+              const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
+              const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
+              const isSelected = !!profile.badgeFrame && currentBadgeFrame === key;
+              const swatch = profileFrameWrapStyle(key, 2, "octagon");
+              return `
+                <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
+                  <button ${isUnlocked ? `data-badge-frame="${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
+                    <div class="${swatch.className}" style="${swatch.style};width:100%;height:100%;${isUnlocked ? "" : "filter:grayscale(1);opacity:0.35;"}">
+                      <div style="width:100%;height:100%;background:var(--input-bg)"></div>
+                    </div>
+                  </button>
+                  ${!isUnlocked ? `<span style="font-size:9px;color:var(--muted2);text-align:center;line-height:1.1">Lvl ${unlockLevel}</span>` : ""}
+                </div>
+              `;
+            }).join("");
+          })()}
+        </div>
+        ` : ""}
+      </div>
+      ` : ""}
       ` : ""}
     </div>
   `;
@@ -14107,6 +14154,22 @@ function openProfileModal() {
       reopenProfileModal();
     });
   }
+  const badgeFrameToggleBtn = document.getElementById("badgeFramePickerToggle");
+  if (badgeFrameToggleBtn) {
+    badgeFrameToggleBtn.addEventListener("click", () => {
+      badgeFramePickerExpanded = !badgeFramePickerExpanded;
+      reopenProfileModal();
+    });
+  }
+  modalRoot.querySelectorAll("[data-badge-frame]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.badgeFrame;
+      profile.badgeFrame = key || null;
+      saveProfile();
+      reopenProfileModal();
+      renderLevelHeroCard();
+    });
+  });
   const passwordToggleBtn = document.getElementById("profilePasswordToggle");
   if (passwordToggleBtn) {
     passwordToggleBtn.addEventListener("click", () => {
