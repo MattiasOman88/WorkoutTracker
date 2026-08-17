@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v400";
+const APP_VERSION = "v401";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -4613,16 +4613,24 @@ function checkAchievements() {
   ACHIEVEMENTS.forEach((a) => {
     if (!a.prestige) return;
     if (isAutoPrestigeEligible(a)) {
-      autoPrestigeAchievement(a);
-      autoPrestiged.push(a);
+      const xpAwarded = autoPrestigeAchievement(a);
+      autoPrestiged.push({ achievement: a, count: achievementPrestige[a.id] || 1, xpAwarded });
     }
   });
-  autoPrestiged.forEach((a) => {
-    celebrationQueue.push({ type: "prestige", achievement: a, count: achievementPrestige[a.id] || 1 });
+  autoPrestiged.forEach(({ achievement: a }) => {
     Object.keys(achievementPrestigeStatsCache).forEach((key) => {
       if (key.startsWith(`${a.id}:`)) delete achievementPrestigeStatsCache[key];
     });
   });
+  if (autoPrestiged.length === 1) {
+    const { achievement: a, count, xpAwarded } = autoPrestiged[0];
+    celebrationQueue.push({ type: "prestige", achievement: a, count, xpAwarded });
+  } else if (autoPrestiged.length > 1) {
+    // Flera prestige på en gång (vanligt när man tränat mycket och loggar
+    // i efterhand) - en enda samlad ruta med alla istället för en lång
+    // rad separata pop-ups man måste klicka igenom en efter en.
+    celebrationQueue.push({ type: "prestigeBatch", items: autoPrestiged });
+  }
 
   // OBS: den här kollen låg tidigare inuti "if (anyNew)" ovan, vilket gjorde
   // att level-up-firandet (popup + ljud) bara visades om en prestation ÄVEN
@@ -4678,7 +4686,30 @@ function showNextCelebration() {
         <div class="celebration-sub">Du klarade den här igen</div>
         <div class="celebration-achievement">${escapeHtml(a.title)} ×${item.count}</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${escapeHtml(a.desc)}</div>
-        <div class="celebration-xp" style="color:${tabColors.stats}">+${a.xp} XP</div>
+        <div class="celebration-xp" style="color:${tabColors.stats}">+${item.xpAwarded} XP</div>
+        <button class="modal-btn primary" id="celebrationNextBtn">Toppen!</button>
+      </div>
+    `;
+  } else if (item.type === "prestigeBatch") {
+    const totalXp = item.items.reduce((sum, x) => sum + x.xpAwarded, 0);
+    const rowsHTML = item.items.map(({ achievement: a, count, xpAwarded }) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        ${a.badgeImage
+          ? `<img src="${a.badgeImage}" alt="${escapeHtml(a.title)}" style="width:36px;height:36px;object-fit:contain;flex-shrink:0" />`
+          : `<div style="width:36px;height:36px;border-radius:50%;border:1.5px solid ${tabColors.stats};color:${tabColors.stats};display:flex;align-items:center;justify-content:center;flex-shrink:0">${a.emoji ? `<span style="font-size:16px">${a.emoji}</span>` : `<span style="width:18px;height:18px;display:flex">${ICONS[a.icon]}</span>`}</div>`}
+        <div style="flex:1;min-width:0;text-align:left">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.title)} ×${count}</div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:${tabColors.stats};flex-shrink:0">+${xpAwarded}</div>
+      </div>
+    `).join("");
+    overlay.innerHTML = `
+      <div class="celebration-card">
+        <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="font-size:32px;line-height:1">🏅</span></div>
+        <div class="celebration-title">Flera prestige på en gång!</div>
+        <div class="celebration-sub" style="margin-bottom:6px">${item.items.length} prestationer klarade igen</div>
+        <div style="max-height:240px;overflow-y:auto;text-align:left;margin-bottom:10px">${rowsHTML}</div>
+        <div class="celebration-xp" style="color:${tabColors.stats}">+${totalXp} XP totalt</div>
         <button class="modal-btn primary" id="celebrationNextBtn">Toppen!</button>
       </div>
     `;
@@ -6104,7 +6135,12 @@ function isAutoPrestigeEligible(a) {
 function autoPrestigeAchievement(a) {
   achievementPrestige[a.id] = (achievementPrestige[a.id] || 0) + 1;
   saveAchievementPrestige();
-  prestigeXp += a.xp;
+  // Att prestigea en redan klarad prestation ger nu bara halva XP:et
+  // jämfört med den ursprungliga upplåsningen - varje gång, inte
+  // avtagande ytterligare. Kändes för lätt att få fullt XP igen och
+  // igen.
+  const xpAwarded = Math.round(a.xp * 0.5);
+  prestigeXp += xpAwarded;
   savePrestigeXp();
   if (COLLECTION_PRESTIGE_IDS.has(a.id)) {
     prestigeConsumedIds[a.id] = workoutEntries.map((e) => e.id);
@@ -6124,6 +6160,7 @@ function autoPrestigeAchievement(a) {
     }
     savePrestigeBaseline();
   }
+  return xpAwarded;
 }
 
 function mergeBgUnlockedAchievements() {
