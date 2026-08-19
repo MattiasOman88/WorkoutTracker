@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v407";
+const APP_VERSION = "v408";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9172,7 +9172,16 @@ async function searchFoodLivsmedelsverket(query) {
   const key = query.trim().toLowerCase();
   if (!key || key.length < 2) return [];
   const list = await fetchLivsmedelsverketList();
-  const matches = list.filter((item) => (item.namn || "").toLowerCase().includes(key)).slice(0, 10);
+  // Livsmedelsverkets namn skrivs ofta "Ris, jasmin okokt" (kategori
+  // f\u00f6rst, sort sen) - en enda l\u00f6pande textmatchning missar d\u00e5 om man
+  // s\u00f6ker i den ordning man sj\u00e4lv t\u00e4nker ("jasminris"/"jasmin ris").
+  // Kr\u00e4v ist\u00e4llet att VARJE ord i s\u00f6ktermen finns n\u00e5gonstans i namnet,
+  // oavsett ordning eller skiljetecken.
+  const queryWords = key.split(/\s+/).filter(Boolean);
+  const matches = list.filter((item) => {
+    const name = (item.namn || "").toLowerCase();
+    return queryWords.every((w) => name.includes(w));
+  }).slice(0, 10);
   const withNutrients = await Promise.all(matches.map(async (item) => {
     try {
       const nutrients = await fetchLivsmedelsverketNutrients(item.nummer);
@@ -9200,7 +9209,6 @@ function renderFoodMatchArea() {
   }
 }
 let foodSearchLatestQuery = "";
-let foodSearchDebugError = "";
 async function searchFoodOFF(query) {
   const key = query.trim().toLowerCase();
   if (!key) return;
@@ -9213,7 +9221,6 @@ async function searchFoodOFF(query) {
   }
   foodSearchStatus = "loading";
   foodSearchResults = [];
-  foodSearchDebugError = "";
   renderFoodMatchArea();
 
   // Livsmedelsverket och Open Food Facts söks parallellt - Livsmedelsverkets
@@ -9230,17 +9237,8 @@ async function searchFoodOFF(query) {
   };
 
   const livsPromise = searchFoodLivsmedelsverket(key)
-    .then((r) => {
-      partial.livs = r;
-      if (!r.length) {
-        const rawSample = (livsmedelsverketListCache || []).slice(0, 2).map((item) => JSON.stringify(item)).join(" | ");
-        foodSearchDebugError = `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt). Råa poster: ${rawSample}`;
-      } else {
-        foodSearchDebugError = "";
-      }
-      applyMerge();
-    })
-    .catch((e) => { partial.livs = []; foodSearchDebugError = `Livsmedelsverket-fel: ${(e && e.message) || e}`; applyMerge(); });
+    .then((r) => { partial.livs = r; applyMerge(); })
+    .catch(() => { partial.livs = []; applyMerge(); });
 
   const offPromise = (async () => {
     try {
@@ -9319,7 +9317,6 @@ function mealBuilderSearchResultsHTML() {
     ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
     ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat.</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar.</p>` : ""}
-    ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Livsmedelsverket-status: ${escapeHtml(foodSearchDebugError)}</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
       <div class="history-scroll" style="max-height:260px">
         ${foodSearchResults.map((p, i) => `
@@ -9380,7 +9377,6 @@ function foodResultsAreaHTML() {
       ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
       ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat. Kontrollera internetanslutningen och försök igen.</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar. Prova ett annat sökord, eller logga kcal manuellt ovan.</p>` : ""}
-      ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Livsmedelsverket-status: ${escapeHtml(foodSearchDebugError)}</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
         <div class="history-scroll" style="max-height:320px">
           ${foodSearchResults.map((p, i) => `
