@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v404";
+const APP_VERSION = "v405";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9219,8 +9219,8 @@ async function searchFoodOFF(query) {
     .then((r) => {
       partial.livs = r;
       if (!r.length) {
-        const sample = (livsmedelsverketListCache || []).slice(0, 3).map((item) => item.Namn).join(", ");
-        foodSearchDebugError = `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt). Exempel på namn i listan: ${sample}`;
+        const rawSample = (livsmedelsverketListCache || []).slice(0, 2).map((item) => JSON.stringify(item)).join(" | ");
+        foodSearchDebugError = `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt). Råa poster: ${rawSample}`;
       } else {
         foodSearchDebugError = "";
       }
