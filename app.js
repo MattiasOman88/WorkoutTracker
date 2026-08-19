@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v403";
+const APP_VERSION = "v404";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9129,7 +9129,7 @@ let livsmedelsverketListPromise = null;
 function fetchLivsmedelsverketList() {
   if (livsmedelsverketListCache) return Promise.resolve(livsmedelsverketListCache);
   if (livsmedelsverketListPromise) return livsmedelsverketListPromise;
-  livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel?limit=3000&sprak=1`)
+  livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel?limit=3000&sprak=2`)
     .then((res) => { if (!res.ok) throw new Error(`bad response: HTTP ${res.status}`); return res.json(); })
     .then((data) => {
       livsmedelsverketListCache = Array.isArray(data) ? data : (data.livsmedel || data.value || data.items || []);
@@ -9216,7 +9216,16 @@ async function searchFoodOFF(query) {
   };
 
   const livsPromise = searchFoodLivsmedelsverket(key)
-    .then((r) => { partial.livs = r; foodSearchDebugError = r.length ? "" : `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt).`; applyMerge(); })
+    .then((r) => {
+      partial.livs = r;
+      if (!r.length) {
+        const sample = (livsmedelsverketListCache || []).slice(0, 3).map((item) => item.Namn).join(", ");
+        foodSearchDebugError = `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt). Exempel på namn i listan: ${sample}`;
+      } else {
+        foodSearchDebugError = "";
+      }
+      applyMerge();
+    })
     .catch((e) => { partial.livs = []; foodSearchDebugError = `Livsmedelsverket-fel: ${(e && e.message) || e}`; applyMerge(); });
 
   const offPromise = (async () => {
