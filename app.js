@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v405";
+const APP_VERSION = "v406";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9129,7 +9129,7 @@ let livsmedelsverketListPromise = null;
 function fetchLivsmedelsverketList() {
   if (livsmedelsverketListCache) return Promise.resolve(livsmedelsverketListCache);
   if (livsmedelsverketListPromise) return livsmedelsverketListPromise;
-  livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel?limit=3000&sprak=2`)
+  livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel?limit=3000&sprak=1`)
     .then((res) => { if (!res.ok) throw new Error(`bad response: HTTP ${res.status}`); return res.json(); })
     .then((data) => {
       livsmedelsverketListCache = Array.isArray(data) ? data : (data.livsmedel || data.value || data.items || []);
