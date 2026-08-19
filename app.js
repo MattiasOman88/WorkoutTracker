@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v401";
+const APP_VERSION = "v402";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9114,6 +9114,69 @@ function parseOffProduct(p) {
   };
 }
 
+// --- Livsmedelsverket (svenska myndigheten) - körs parallellt med OFF, se
+// searchFoodOFF. Officiell öppen data, se
+// https://www.livsmedelsverket.se/en/about-us/open-data/food-composition-data/
+// Ingen sök-parameter finns dokumenterad på /api/v1/livsmedel - den hämtar
+// en sida i taget av hela listan (~2500 livsmedel), därav limit=3000 för
+// att få hela listan på en gång. Hämtas EN gång per session och cachas, sen
+// filtreras det lokalt på namn - snabbt och skonsamt mot deras server efter
+// den första hämtningen. Svarsformen är { _meta, _links, livsmedel: [...] }
+// (upptäckt genom att faktiskt testa mot servern tidigare).
+const LIVSMEDELSVERKET_BASE = "https://dataportal.livsmedelsverket.se/livsmedel/api/v1";
+let livsmedelsverketListCache = null;
+let livsmedelsverketListPromise = null;
+function fetchLivsmedelsverketList() {
+  if (livsmedelsverketListCache) return Promise.resolve(livsmedelsverketListCache);
+  if (livsmedelsverketListPromise) return livsmedelsverketListPromise;
+  livsmedelsverketListPromise = fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel?limit=3000&sprak=1`)
+    .then((res) => { if (!res.ok) throw new Error(`bad response: HTTP ${res.status}`); return res.json(); })
+    .then((data) => {
+      livsmedelsverketListCache = Array.isArray(data) ? data : (data.livsmedel || data.value || data.items || []);
+      return livsmedelsverketListCache;
+    })
+    .catch((e) => { livsmedelsverketListPromise = null; throw e; });
+  return livsmedelsverketListPromise;
+}
+async function fetchLivsmedelsverketNutrients(nummer) {
+  const res = await fetch(`${LIVSMEDELSVERKET_BASE}/livsmedel/${encodeURIComponent(nummer)}/naringsvarden`);
+  if (!res.ok) throw new Error("bad response");
+  const data = await res.json();
+  const rows = Array.isArray(data) ? data : (data.naringsvarden || data.value || data.items || []);
+  const findVal = (code) => {
+    const row = rows.find((r) => (r.EuroFIRkod || r.Forkortning || "").toUpperCase() === code);
+    return row ? Number(row.Varde) : null;
+  };
+  return {
+    kcal100: findVal("ENERC"),
+    protein100: findVal("PROT"),
+    fat100: findVal("FAT"),
+    carbs100: findVal("CHO"),
+  };
+}
+async function searchFoodLivsmedelsverket(query) {
+  const key = query.trim().toLowerCase();
+  if (!key || key.length < 2) return [];
+  const list = await fetchLivsmedelsverketList();
+  const matches = list.filter((item) => (item.Namn || "").toLowerCase().includes(key)).slice(0, 10);
+  const withNutrients = await Promise.all(matches.map(async (item) => {
+    try {
+      const nutrients = await fetchLivsmedelsverketNutrients(item.Nummer);
+      if (nutrients.kcal100 == null || isNaN(nutrients.kcal100)) return null;
+      return {
+        name: item.Namn || "Okänt livsmedel",
+        brand: "",
+        kcal100: Math.round(nutrients.kcal100),
+        protein100: nutrients.protein100 != null ? Math.round(nutrients.protein100 * 10) / 10 : null,
+        fat100: nutrients.fat100 != null ? Math.round(nutrients.fat100 * 10) / 10 : null,
+        carbs100: nutrients.carbs100 != null ? Math.round(nutrients.carbs100 * 10) / 10 : null,
+        source: "livsmedelsverket",
+      };
+    } catch (e) { return null; }
+  }));
+  return withNutrients.filter(Boolean);
+}
+
 function renderFoodMatchArea() {
   if (foodSearchMode === "meals" && mealBuilderActive) {
     const el = document.getElementById("mealSearchResults");
@@ -9136,26 +9199,39 @@ async function searchFoodOFF(query) {
   foodSearchStatus = "loading";
   foodSearchResults = [];
   renderFoodMatchArea();
-  try {
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(key)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,generic_name,brands,nutriments`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("bad response");
-    const data = await res.json();
-    // Om användaren hunnit skriva vidare (eller ta bort en bokstav) medan
-    // den här sökningen låg ute, är svaret inaktuellt - strunta i det så
-    // det inte råkar skriva över ett nyare, redan visat resultat (eller
-    // tvärtom, visa ett gammalt fel trots att den senaste sökningen faktiskt
-    // lyckades).
+
+  // Livsmedelsverket och Open Food Facts söks parallellt - Livsmedelsverkets
+  // träffar (bättre svenska råvaror) visas först, OFF:s därefter. Om den ena
+  // källan strular (t.ex. Livsmedelsverket blockerar webbläsaranrop) syns
+  // det bara som färre resultat från den källan, inte ett hårt fel - OFF:s
+  // resultat visas ändå som förut.
+  const partial = { livs: null, off: null };
+  const applyMerge = () => {
     if (key !== foodSearchLatestQuery) return;
-    const products = (data.products || []).map(parseOffProduct).filter(Boolean).slice(0, 15);
-    foodSearchCache[key] = products;
-    foodSearchResults = products;
+    foodSearchResults = [...(partial.livs || []), ...(partial.off || [])];
     foodSearchStatus = "done";
-  } catch (e) {
-    if (key !== foodSearchLatestQuery) return;
-    foodSearchStatus = "error";
-  }
-  renderFoodMatchArea();
+    renderFoodMatchArea();
+  };
+
+  const livsPromise = searchFoodLivsmedelsverket(key)
+    .then((r) => { partial.livs = r; applyMerge(); })
+    .catch(() => { partial.livs = []; applyMerge(); });
+
+  const offPromise = (async () => {
+    try {
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(key)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,generic_name,brands,nutriments`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      partial.off = (data.products || []).map(parseOffProduct).filter(Boolean).slice(0, 15);
+    } catch (e) {
+      partial.off = [];
+    }
+    applyMerge();
+  })();
+
+  await Promise.all([livsPromise, offPromise]);
+  if (key === foodSearchLatestQuery) foodSearchCache[key] = foodSearchResults;
 }
 
 function isFoodFavorited(p) {
