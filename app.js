@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v402";
+const APP_VERSION = "v403";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9186,6 +9186,7 @@ function renderFoodMatchArea() {
   }
 }
 let foodSearchLatestQuery = "";
+let foodSearchDebugError = "";
 async function searchFoodOFF(query) {
   const key = query.trim().toLowerCase();
   if (!key) return;
@@ -9198,6 +9199,7 @@ async function searchFoodOFF(query) {
   }
   foodSearchStatus = "loading";
   foodSearchResults = [];
+  foodSearchDebugError = "";
   renderFoodMatchArea();
 
   // Livsmedelsverket och Open Food Facts söks parallellt - Livsmedelsverkets
@@ -9214,8 +9216,8 @@ async function searchFoodOFF(query) {
   };
 
   const livsPromise = searchFoodLivsmedelsverket(key)
-    .then((r) => { partial.livs = r; applyMerge(); })
-    .catch(() => { partial.livs = []; applyMerge(); });
+    .then((r) => { partial.livs = r; foodSearchDebugError = r.length ? "" : `Livsmedelsverket: 0 träffar (listan hade ${livsmedelsverketListCache ? livsmedelsverketListCache.length : "?"} livsmedel totalt).`; applyMerge(); })
+    .catch((e) => { partial.livs = []; foodSearchDebugError = `Livsmedelsverket-fel: ${(e && e.message) || e}`; applyMerge(); });
 
   const offPromise = (async () => {
     try {
@@ -9294,6 +9296,7 @@ function mealBuilderSearchResultsHTML() {
     ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
     ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat.</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar.</p>` : ""}
+    ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Livsmedelsverket-status: ${escapeHtml(foodSearchDebugError)}</p>` : ""}
     ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
       <div class="history-scroll" style="max-height:260px">
         ${foodSearchResults.map((p, i) => `
@@ -9354,6 +9357,7 @@ function foodResultsAreaHTML() {
       ${foodSearchStatus === "loading" ? `<p style="text-align:center">Söker…</p>` : ""}
       ${foodSearchStatus === "error" ? `<p style="text-align:center">Kunde inte hämta resultat. Kontrollera internetanslutningen och försök igen.</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length === 0 ? `<p style="text-align:center">Inga träffar. Prova ett annat sökord, eller logga kcal manuellt ovan.</p>` : ""}
+      ${foodSearchDebugError ? `<p style="text-align:center;font-size:11px;color:#E15554;word-break:break-word">Livsmedelsverket-status: ${escapeHtml(foodSearchDebugError)}</p>` : ""}
       ${foodSearchStatus === "done" && foodSearchResults.length > 0 ? `
         <div class="history-scroll" style="max-height:320px">
           ${foodSearchResults.map((p, i) => `
