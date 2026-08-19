@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v406";
+const APP_VERSION = "v407";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -9143,9 +9143,23 @@ async function fetchLivsmedelsverketNutrients(nummer) {
   if (!res.ok) throw new Error("bad response");
   const data = await res.json();
   const rows = Array.isArray(data) ? data : (data.naringsvarden || data.value || data.items || []);
+  // Fältnamnens bokstavsstorlek visade sig skilja sig från dokumentationen
+  // för livsmedel/nummer (gemener: namn/nummer, inte Namn/Nummer) - gör
+  // därför sökningen okänslig för bokstavsstorlek här också, istället för
+  // att gissa fel igen.
+  const getCI = (row, ...names) => {
+    const lowerNames = names.map((n) => n.toLowerCase());
+    const foundKey = Object.keys(row).find((k) => lowerNames.includes(k.toLowerCase()));
+    return foundKey ? row[foundKey] : undefined;
+  };
   const findVal = (code) => {
-    const row = rows.find((r) => (r.EuroFIRkod || r.Forkortning || "").toUpperCase() === code);
-    return row ? Number(row.Varde) : null;
+    const row = rows.find((r) => {
+      const kod = getCI(r, "EuroFIRkod", "Forkortning", "kod", "code");
+      return (kod || "").toString().toUpperCase() === code;
+    });
+    if (!row) return null;
+    const val = getCI(row, "Varde", "value");
+    return val != null ? Number(val) : null;
   };
   return {
     kcal100: findVal("ENERC"),
@@ -9158,13 +9172,13 @@ async function searchFoodLivsmedelsverket(query) {
   const key = query.trim().toLowerCase();
   if (!key || key.length < 2) return [];
   const list = await fetchLivsmedelsverketList();
-  const matches = list.filter((item) => (item.Namn || "").toLowerCase().includes(key)).slice(0, 10);
+  const matches = list.filter((item) => (item.namn || "").toLowerCase().includes(key)).slice(0, 10);
   const withNutrients = await Promise.all(matches.map(async (item) => {
     try {
-      const nutrients = await fetchLivsmedelsverketNutrients(item.Nummer);
+      const nutrients = await fetchLivsmedelsverketNutrients(item.nummer);
       if (nutrients.kcal100 == null || isNaN(nutrients.kcal100)) return null;
       return {
-        name: item.Namn || "Okänt livsmedel",
+        name: item.namn || "Okänt livsmedel",
         brand: "",
         kcal100: Math.round(nutrients.kcal100),
         protein100: nutrients.protein100 != null ? Math.round(nutrients.protein100 * 10) / 10 : null,
