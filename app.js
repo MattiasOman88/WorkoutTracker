@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v408";
+const APP_VERSION = "v409";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -2021,7 +2021,23 @@ function lastSessionForSplit(splitId) {
   }
   return null;
 }
+function loadBestWeightOverrides() {
+  try { const raw = localStorage.getItem("best_weight_overrides_v1"); if (raw) return JSON.parse(raw); } catch (e) { /* fall through */ }
+  return {};
+}
+function saveBestWeightOverrides() {
+  try { localStorage.setItem("best_weight_overrides_v1", JSON.stringify(bestWeightOverrides)); } catch (e) { /* ignore */ }
+}
+let bestWeightOverrides = loadBestWeightOverrides();
 function bestSetForExercise(exerciseName) {
+  // Om man rättat/nollställt "bästa" för den här övningen manuellt (se
+  // "Rätta bästa"-knappen i Starta pass), gäller det - annars kan ett
+  // felslag (typ 800kg istället för 80kg) ligga kvar som permanent fel
+  // "bästa" för alltid, eftersom den r\u00e5a felaktiga siffran fortfarande
+  // finns kvar i ett gammalt sparat pass.
+  if (Object.prototype.hasOwnProperty.call(bestWeightOverrides, exerciseName)) {
+    return bestWeightOverrides[exerciseName];
+  }
   let best = null;
   gymSessionHistory.forEach((session) => {
     const ex = session.exercises.find((e) => e.name === exerciseName);
@@ -4971,7 +4987,7 @@ function openBingoModal() {
 function weeklyChallengeCardHTML() {
   rollWeeklyChallengesIfNeeded();
   const amounts = weeklyChallengeXpAmounts();
-  const weekEnd = addDays(weeklyChallengeState.weekStart, 6);
+  const weekEnd = weeklyChallengeState.endDate || addDays(weeklyChallengeState.weekStart, 6);
   const rows = weeklyChallengeState.ids.map((id) => {
     const c = findWeeklyChallengeById(id);
     if (!c) return "";
@@ -5240,7 +5256,7 @@ function wireLevelHeroCardEvents() {
 // den tillbaka på veckans måndag precis som tidigare beteende.
 function isDateInThisWeek(dateStr) {
   const start = weeklyChallengeState.startedAt || mondayOf(todayISO());
-  const end = addDays(mondayOf(todayISO()), 6);
+  const end = weeklyChallengeState.endDate || addDays(mondayOf(todayISO()), 6);
   return dateStr >= start && dateStr <= end;
 }
 function thisWeekTrainingEntries() {
@@ -5810,7 +5826,24 @@ function computeWeakestFiveSubmissionIds() {
 
 function rollWeeklyChallengesIfNeeded() {
   const currentMonday = mondayOf(todayISO());
-  if (weeklyChallengeState.weekStart === currentMonday) return;
+  // Samma mönster som bingo-brickan: ett sparat, uttryckligt slutdatum på
+  // objektet istället för att räkna om från kalenderveckan varje gång - så
+  // att en förtida omstart (se startNextWeeklyChallengeEarly) kan förlänga
+  // slutdatumet till en riktig ny 7-dagarsperiod, utan att den automatiska
+  // rullovern ändå tvingar fram en ny omgång på nästa måndag och kapar den
+  // förlängda perioden i förtid.
+  // Bakåtkompatibelt: gammal sparad data saknar endDate. Räknar fram den
+  // fr\u00e5n startedAt (inte weekStart) - om anv\u00e4ndaren redan startat om i
+  // f\u00f6rtid n\u00e5gon g\u00e5ng under det gamla systemet (startedAt \u00e4r d\u00e5 senare \u00e4n
+  // weekStart) blir slutdatumet d\u00e4rmed r\u00e4tt f\u00f6rl\u00e4ngt direkt, utan att de
+  // beh\u00f6ver starta om \u00e4nnu en g\u00e5ng bara f\u00f6r att f\u00e5 den nya, r\u00e4ttvisa
+  // periodens l\u00e4ngd.
+  const assumedEndDate = weeklyChallengeState.endDate || addDays(weeklyChallengeState.startedAt || currentMonday, 6);
+  if (weeklyChallengeState.weekStart && !weeklyChallengeState.endDate) {
+    weeklyChallengeState.endDate = assumedEndDate;
+    saveWeeklyChallengeState();
+  }
+  if (weeklyChallengeState.weekStart && todayISO() <= assumedEndDate) return;
   if (weeklyChallengeState.weekStart) {
     weeklyChallengeHistory.push({ weekStart: weeklyChallengeState.weekStart, completed: weeklyChallengeState.completed.length, total: weeklyChallengeState.ids.length });
     saveWeeklyChallengeHistory();
@@ -5821,7 +5854,7 @@ function rollWeeklyChallengesIfNeeded() {
     pickOne(WEEKLY_CHALLENGE_POOL.training).id,
     pickOne(WEEKLY_CHALLENGE_POOL.other).id,
   ];
-  weeklyChallengeState = { weekStart: currentMonday, startedAt: currentMonday, ids, completed: [], bonusAwarded: false };
+  weeklyChallengeState = { weekStart: currentMonday, startedAt: currentMonday, endDate: addDays(currentMonday, 6), ids, completed: [], bonusAwarded: false };
   if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
@@ -5835,11 +5868,11 @@ function startNextWeeklyChallengeEarly() {
     pickOne(WEEKLY_CHALLENGE_POOL.training).id,
     pickOne(WEEKLY_CHALLENGE_POOL.other).id,
   ];
-  // weekStart stays as-is on purpose: the automatic Monday reroll still fires on schedule,
-  // this just gives a fresh set of 3 to chase for whatever's left of the current week.
-  // startedAt flyttas dock fram till idag, så de nya utmaningarna räknar
-  // från och med nu - inte allt som redan hänt tidigare i veckan.
-  weeklyChallengeState = { ...weeklyChallengeState, ids, startedAt: todayISO(), completed: [], bonusAwarded: false };
+  // startedAt OCH endDate flyttas fram till idag/+6 dagar - en riktig ny
+  // 7-dagarsperiod från just den här stunden, likt månadsbingon, istället
+  // för att bara vara begränsad till resten av kalenderveckan.
+  const today = todayISO();
+  weeklyChallengeState = { ...weeklyChallengeState, ids, startedAt: today, endDate: addDays(today, 6), completed: [], bonusAwarded: false };
   if (ids.includes("sub_weakest_five")) weeklyChallengeState.weakestSubmissionsSnapshot = computeWeakestFiveSubmissionIds();
   saveWeeklyChallengeState();
 }
@@ -7720,6 +7753,46 @@ function wireSenastePassenCardEvents() {
   });
 }
 
+function openFixBestModal(exerciseName) {
+  const current = bestSetForExercise(exerciseName);
+  pushModalHistoryIfNeeded();
+  modalRoot.innerHTML = `
+    <div class="modal-overlay" id="fixBestOverlay">
+      <div class="modal-sheet">
+        <h2 style="text-align:center">Rätta bästa</h2>
+        <p style="text-align:center;font-size:13px;color:var(--muted)">${escapeHtml(exerciseName)}</p>
+        <div class="row">
+          <input type="number" inputmode="decimal" step="0.5" placeholder="kg" id="fixBestWeightInput" value="${current ? current.weight : ""}" style="max-width:120px" />
+          <input type="number" inputmode="numeric" placeholder="reps" id="fixBestRepsInput" value="${current && current.reps != null ? current.reps : ""}" style="max-width:120px" />
+        </div>
+        <p style="text-align:center;font-size:11.5px;color:var(--muted2);margin-top:-4px">Lämna kg tomt för att nollställa (visar inget "bästa" tills du loggar ett nytt riktigt pass).</p>
+        <div class="row" style="margin-top:10px">
+          <button class="modal-btn secondary" id="fixBestCancelBtn" style="flex:1">Avbryt</button>
+          <button class="modal-btn primary" id="fixBestSaveBtn" style="flex:1">Spara</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("fixBestCancelBtn").addEventListener("click", () => { modalRoot.innerHTML = ""; handleModalClosedByUser(); });
+  document.getElementById("fixBestOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "fixBestOverlay") { modalRoot.innerHTML = ""; handleModalClosedByUser(); }
+  });
+  document.getElementById("fixBestSaveBtn").addEventListener("click", () => {
+    const weightRaw = document.getElementById("fixBestWeightInput").value;
+    const repsRaw = document.getElementById("fixBestRepsInput").value;
+    const weight = parseFloat(String(weightRaw).replace(",", "."));
+    if (weightRaw === "" || isNaN(weight)) {
+      bestWeightOverrides[exerciseName] = null;
+    } else {
+      const reps = repsRaw === "" ? null : parseInt(repsRaw, 10);
+      bestWeightOverrides[exerciseName] = { weight, reps: isNaN(reps) ? null : reps };
+    }
+    saveBestWeightOverrides();
+    modalRoot.innerHTML = "";
+    handleModalClosedByUser();
+    renderTraning();
+  });
+}
 function gymSessionViewHTML() {
   const s = activeGymSession;
   const splitLabel = (gymSplits.find((g) => g.id === s.splitId) || {}).text || "";
@@ -7746,7 +7819,10 @@ function gymSessionViewHTML() {
           <button class="delete-btn" data-remove-exercise="${exIdx}">${ICONS.trash}</button>
         </div>
         ${lastEx ? `<div style="font-size:11.5px;color:var(--muted2)">Förra gången: ${lastEx.sets.map((s) => (s && s.weight != null ? `${s.weight}kg×${s.reps != null ? s.reps : "?"}` : "–")).join(", ")}</div>` : ""}
-        ${best ? `<div style="font-size:11.5px;color:${tabColors.traning};margin-bottom:10px">🏆 Bästa: ${best.weight}kg${best.reps != null ? `×${best.reps}` : ""}</div>` : `<div style="margin-bottom:10px"></div>`}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          ${best ? `<div style="font-size:11.5px;color:${tabColors.traning}">🏆 Bästa: ${best.weight}kg${best.reps != null ? `×${best.reps}` : ""}</div>` : ""}
+          <button data-fix-best="${exIdx}" style="background:none;border:none;padding:0;font-size:10.5px;color:var(--muted2);text-decoration:underline;cursor:pointer;font-family:inherit">${best ? "Fel? Rätta" : "Sätt bästa manuellt"}</button>
+        </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;padding-left:44px">
           <span style="flex:1;text-align:center;font-size:10.5px;color:var(--muted2)">Kg</span>
           <span style="flex:1;text-align:center;font-size:10.5px;color:var(--muted2)">Reps</span>
@@ -7828,6 +7904,13 @@ function wireGymSessionViewEvents() {
       const currentPos = allWeightInputs.indexOf(currentWeightInput);
       const next = allWeightInputs[currentPos + 1];
       if (next) next.focus(); else input.blur();
+    });
+  });
+  content.querySelectorAll("[data-fix-best]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const exIdx = parseInt(btn.dataset.fixBest, 10);
+      const ex = activeGymSession.exercises[exIdx];
+      openFixBestModal(ex.name);
     });
   });
   content.querySelectorAll("[data-add-set]").forEach((btn) => {
@@ -8744,7 +8827,7 @@ function calorieHistoryListCardHTML() {
     const remaining = goalTarget !== null ? goalTarget - eaten + burned : null;
     return { date, eaten, burned, remaining };
   });
-  const gridTemplate = "grid-template-columns: minmax(76px,1fr) 50px 68px 46px 32px; gap:6px;";
+  const gridTemplate = "grid-template-columns: minmax(60px,1fr) 42px 60px 40px 28px; gap:4px;";
   const remainingColor = (r) => r === null ? "var(--muted)" : r < 0 ? "#E15554" : "#4CAF7D";
   return `
     <div class="card">
