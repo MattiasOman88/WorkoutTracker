@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v409";
+const APP_VERSION = "v410";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -2154,6 +2154,7 @@ const EMBLEM_ICON_KALORIER = "badges/EMBLEM_ICON_KALORIER.png";
 const EMBLEM_ICON_STATS = "badges/EMBLEM_ICON_STATS.png";
 const APP_ICON_IMG = "badges/APP_ICON_IMG.png";
 const CELEBRATION_IMG_LEVELUP = "badges/CELEBRATION_IMG_LEVELUP.png";
+const CELEBRATION_IMG_PRESTIGE_BATCH = "badges/CELEBRATION_IMG_PRESTIGE_BATCH.png";
 const CELEBRATION_IMG_MONTHRECAP = "badges/CELEBRATION_IMG_MONTHRECAP.png";
 const CELEBRATION_IMG_WEEKLYBONUS = "badges/CELEBRATION_IMG_WEEKLYBONUS.png";
 const CELEBRATION_IMG_WEEKLYCHALLENGE = "badges/CELEBRATION_IMG_WEEKLYCHALLENGE.png";
@@ -4720,8 +4721,8 @@ function showNextCelebration() {
       </div>
     `).join("");
     overlay.innerHTML = `
-      <div class="celebration-card">
-        <div class="celebration-icon" style="color:${tabColors.stats};border-color:${tabColors.stats}"><span style="font-size:32px;line-height:1">🏅</span></div>
+      <div class="celebration-card" style="padding-top:96px">
+        <img src="${CELEBRATION_IMG_PRESTIGE_BATCH}" alt="" class="achievement-badge-pop" />
         <div class="celebration-title">Flera prestige på en gång!</div>
         <div class="celebration-sub" style="margin-bottom:6px">${item.items.length} prestationer klarade igen</div>
         <div style="max-height:240px;overflow-y:auto;text-align:left;margin-bottom:10px">${rowsHTML}</div>
