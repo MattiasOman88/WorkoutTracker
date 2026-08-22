@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v411";
+const APP_VERSION = "v412";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -14214,7 +14214,7 @@ function openProfileModal() {
               const unlockLevel = PROFILE_FRAME_UNLOCK_LEVEL[key] || 1;
               const isUnlocked = currentLevel >= unlockLevel || debugForceUnlockCosmetics;
               const isSelected = !!profile.badgeFrame && currentBadgeFrame === key;
-              const swatch = profileFrameWrapStyle(key, 2, "octagon");
+              const swatch = profileFrameWrapStyle(key, 8, "octagon");
               return `
                 <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:40px">
                   <button ${isUnlocked ? `data-badge-frame="${key}"` : ""} aria-label="${PROFILE_FRAMES[key].label}" title="${PROFILE_FRAMES[key].label}" style="width:36px;height:36px;padding:2px;border:1.5px solid ${isSelected ? tabColors.stats : "transparent"};background:none;cursor:${isUnlocked ? "pointer" : "default"}">
