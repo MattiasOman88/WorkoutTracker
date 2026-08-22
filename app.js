@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v413";
+const APP_VERSION = "v414";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -1315,6 +1315,70 @@ let authFormBusy = false;
 let profilePasswordSectionOpen = false;
 let debugSectionOpen = false;
 let debugUnlockedThisSession = false;
+// Ögonblicksbild av allt debug-läget kan ändra, tagen precis när man låser
+// upp debug-läget - så man alltid kan återgå till hur det var innan, och så
+// att INGENTING från debug-läget synkas till molnet förrän man aktivt valt
+// att antingen återgå eller behålla \u00e4ndringarna (se debugSyncSuppressed).
+// B\u00e5da sparas till localStorage (inte bara i minnet) - annars hade sp\u00e4rren
+// f\u00f6rsvunnit om appen st\u00e4ngdes helt, vilket \u00e4r EXAKT det m\u00f6nster som
+// orsakade den stora prestations-incidenten (gammal debugdata som legat
+// kvar \u00f6verlevde en omstart och synkades in mycket senare).
+function loadDebugSessionSnapshot() {
+  try { const raw = localStorage.getItem("debug_session_snapshot_v1"); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function saveDebugSessionSnapshotToStorage() {
+  try {
+    if (debugSessionSnapshot) localStorage.setItem("debug_session_snapshot_v1", JSON.stringify(debugSessionSnapshot));
+    else localStorage.removeItem("debug_session_snapshot_v1");
+  } catch (e) { /* ignore */ }
+}
+function loadDebugSyncSuppressed() {
+  try { return localStorage.getItem("debug_sync_suppressed_v1") === "1"; } catch (e) { return false; }
+}
+function saveDebugSyncSuppressedToStorage() {
+  try { localStorage.setItem("debug_sync_suppressed_v1", debugSyncSuppressed ? "1" : "0"); } catch (e) { /* ignore */ }
+}
+let debugSessionSnapshot = loadDebugSessionSnapshot();
+let debugSyncSuppressed = loadDebugSyncSuppressed();
+function takeDebugSessionSnapshot() {
+  debugSessionSnapshot = {
+    unlockedAchievements: [...unlockedAchievements],
+    unlockedAchievementDates: { ...unlockedAchievementDates },
+    prestigeXp: prestigeXp,
+    achievementPrestige: { ...achievementPrestige },
+    platinumUnlockedAt: platinumUnlockedAt,
+    debugXpOverride: debugXpOverride,
+  };
+  debugSyncSuppressed = true;
+  saveDebugSessionSnapshotToStorage();
+  saveDebugSyncSuppressedToStorage();
+}
+function restoreDebugSessionSnapshot() {
+  if (!debugSessionSnapshot) return;
+  unlockedAchievements = [...debugSessionSnapshot.unlockedAchievements];
+  unlockedAchievementDates = { ...debugSessionSnapshot.unlockedAchievementDates };
+  prestigeXp = debugSessionSnapshot.prestigeXp;
+  achievementPrestige = { ...debugSessionSnapshot.achievementPrestige };
+  platinumUnlockedAt = debugSessionSnapshot.platinumUnlockedAt;
+  debugXpOverride = debugSessionSnapshot.debugXpOverride;
+  saveUnlockedAchievements();
+  saveUnlockedAchievementDates();
+  savePrestigeXp();
+  saveAchievementPrestige();
+  savePlatinumUnlockedAt();
+  saveDebugXpOverride();
+  debugSessionSnapshot = null;
+  debugSyncSuppressed = false;
+  saveDebugSessionSnapshotToStorage();
+  saveDebugSyncSuppressedToStorage();
+}
+function keepDebugSessionChanges() {
+  debugSessionSnapshot = null;
+  debugSyncSuppressed = false;
+  saveDebugSessionSnapshotToStorage();
+  saveDebugSyncSuppressedToStorage();
+  scheduleCloudPush();
+}
 const DEBUG_PIN_HASH = "5a4a0c923c9a9f9edb8a8f6aa3f6212708ad91b6895f3e5fa606710570b1f1f4";
 async function sha256Hex(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -11614,6 +11678,11 @@ async function pushStateToCloud() {
 // (t.ex. att skriva i ett textfält) inte ger en nätverksanrop per tangenttryckning.
 function scheduleCloudPush() {
   if (!supabaseClient || !authUser) return;
+  // Så länge debug-läget är olöst (varken återgått eller uttryckligen
+  // behållet, se Inställningar -> Debug) pushas INGENTING till molnet -
+  // detta \u00e4r vad som orsakade den stora prestations-incidenten tidigare
+  // (gammal, kvarbliven debugdata synkades in i efterhand av misstag).
+  if (debugSyncSuppressed) return;
   // Blockera tills den inledande hämtningen är klar (se
   // initialPullCompletedForUser) - annars kan en lokal, ännu inte
   // ihopslagen profil skrivas över molnets riktiga data. Väntar man ut det
@@ -12482,6 +12551,15 @@ function openBackupModal() {
         <p style="margin-top:-4px">Testa bälten och nivåer, eller lås upp valfria prestationer manuellt.</p>
         <div id="debugBody" class="settings-indent" style="display:flex;flex-direction:column;gap:10px;${debugSectionOpen ? "" : "display:none"}">
           ${debugUnlockedThisSession ? `
+          ${debugSyncSuppressed ? `
+          <div style="background:${hexToRgba("#E15554", 0.12)};border:1px solid #E15554;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:12px;color:#E15554;font-weight:600">⚠️ Debug-läge aktivt - inget synkas till molnet just nu.</div>
+            <div style="display:flex;gap:8px">
+              <button class="modal-btn secondary" id="debugRestoreSnapshotBtn" style="flex:1;font-size:12.5px">↩️ Återgå till innan debug</button>
+              <button class="modal-btn primary" id="debugKeepChangesBtn" style="flex:1;font-size:12.5px">✅ Behåll & synka</button>
+            </div>
+          </div>
+          ` : ""}
           <div style="font-size:12px;font-weight:700;color:var(--muted)">Hoppa till nivå</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
             ${[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((lvl) => `<button class="chip" data-debug-belt="${lvl}">${getBeltForLevel(lvl).name} (level ${lvl})</button>`).join("")}
@@ -12514,6 +12592,9 @@ function openBackupModal() {
             </label>
           </div>
           ` : `
+          ${debugSyncSuppressed ? `
+          <div style="background:${hexToRgba("#E15554", 0.12)};border:1px solid #E15554;border-radius:10px;padding:10px 12px;font-size:12px;color:#E15554;font-weight:600">⚠️ Debug-ändringar väntar - synk till molnet är pausad. Ange PIN-koden nedan för att återgå eller behålla.</div>
+          ` : ""}
           <div style="font-size:12px;color:var(--muted)">Debug-läget är låst. Ange PIN-kod för att låsa upp.</div>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="password" inputmode="numeric" id="debugPinInput" placeholder="PIN-kod" style="flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-family:inherit;letter-spacing:2px" />
@@ -12813,6 +12894,7 @@ function openBackupModal() {
       const enteredHash = await sha256Hex(input.value);
       if (enteredHash === DEBUG_PIN_HASH) {
         debugUnlockedThisSession = true;
+        takeDebugSessionSnapshot();
         const sheet2 = modalRoot.querySelector(".modal-sheet");
         const scrollTop2 = sheet2 ? sheet2.scrollTop : 0;
         openBackupModal();
@@ -12827,6 +12909,24 @@ function openBackupModal() {
     debugPinSubmitBtn.addEventListener("click", tryUnlock);
     document.getElementById("debugPinInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") tryUnlock();
+    });
+  }
+  const debugRestoreBtn = document.getElementById("debugRestoreSnapshotBtn");
+  if (debugRestoreBtn) {
+    debugRestoreBtn.addEventListener("click", () => {
+      restoreDebugSessionSnapshot();
+      renderDebugAchievementsList();
+      if (activeTab === "stats") renderStats(); else render();
+      reopenProfileModal();
+      showModalStatus("Återställt till innan debug-läget aktiverades.", "ok");
+    });
+  }
+  const debugKeepBtn = document.getElementById("debugKeepChangesBtn");
+  if (debugKeepBtn) {
+    debugKeepBtn.addEventListener("click", () => {
+      keepDebugSessionChanges();
+      reopenProfileModal();
+      showModalStatus("Ändringarna behålls och synkas till molnet igen.", "ok");
     });
   }
   if (debugUnlockedThisSession) {
