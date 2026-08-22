@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v412";
+const APP_VERSION = "v413";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -11102,8 +11102,20 @@ function mergeRemoteStateIntoLocal(remote) {
 
   if (Array.isArray(remote.bgUnlockedAchievements)) { bgUnlockedAchievements = mergeStringArrayUnion(bgUnlockedAchievements, remote.bgUnlockedAchievements); saveBgUnlockedAchievements(); }
   if (Array.isArray(remote.unlockedAchievements)) {
-    unlockedAchievements = mergeStringArrayUnion(unlockedAchievements, remote.unlockedAchievements).filter((id) => ACHIEVEMENTS.some((a) => a.id === id));
-    saveUnlockedAchievements();
+    const validRemoteIds = remote.unlockedAchievements.filter((id) => ACHIEVEMENTS.some((a) => a.id === id));
+    const newFromRemote = validRemoteIds.filter((id) => !unlockedAchievements.includes(id));
+    // Sk\u00e4rper h\u00e4r efter en riktig incident: gammal/felaktig data (t.ex. fr\u00e5n
+    // ett testl\u00e4ge som r\u00e5kat l\u00e4mnas p\u00e5) fick en g\u00e5ng med sig ALLA
+    // prestationer p\u00e5 en g\u00e5ng via just den h\u00e4r synken. Ingen rimlig m\u00e4ngd
+    // vanligt spelande l\u00e5ser upp mer \u00e4n n\u00e5gra f\u00e5 prestationer sam tidigt -
+    // om molnet f\u00f6resl\u00e5r fler \u00e4n s\u00e5 p\u00e5 en g\u00e5ng, hoppa \u00f6ver den h\u00e4r
+    // sammanslagningen helt ist\u00e4llet f\u00f6r att blint acceptera den.
+    if (newFromRemote.length > 15) {
+      console.warn(`Synk av unlockedAchievements hoppades \u00f6ver: molnet f\u00f6reslog ${newFromRemote.length} nya prestationer p\u00e5 en g\u00e5ng, vilket inte \u00e4r rimligt via vanligt spelande.`);
+    } else {
+      unlockedAchievements = mergeStringArrayUnion(unlockedAchievements, validRemoteIds);
+      saveUnlockedAchievements();
+    }
   }
 
   if (typeof remote.prestigeXp === "number") { prestigeXp = Math.max(prestigeXp || 0, remote.prestigeXp); savePrestigeXp(); }
