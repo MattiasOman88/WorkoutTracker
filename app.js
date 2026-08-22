@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v410";
+const APP_VERSION = "v411";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -4595,6 +4595,7 @@ function checkAchievements() {
   const levelBefore = computeLevelInfo(xpBefore).level;
   let anyNew = false;
   let anyBg = false;
+  const justUnlockedIds = new Set();
   ACHIEVEMENTS.forEach((a) => {
     if (unlockedAchievements.includes(a.id) || bgUnlockedAchievements.includes(a.id)) return;
     if (!a.check()) return;
@@ -4606,6 +4607,8 @@ function checkAchievements() {
     unlockedAchievements.push(a.id);
     unlockedAchievementDates[a.id] = todayISO();
     anyNew = true;
+    justUnlockedIds.add(a.id);
+    if (a.prestige) establishPrestigeBaseline(a);
     celebrationQueue.push({ type: "achievement", achievement: a });
   });
   if (anyBg) saveBgUnlockedAchievements();
@@ -4629,6 +4632,7 @@ function checkAchievements() {
   const autoPrestiged = [];
   ACHIEVEMENTS.forEach((a) => {
     if (!a.prestige) return;
+    if (justUnlockedIds.has(a.id)) return;
     if (isAutoPrestigeEligible(a)) {
       const xpAwarded = autoPrestigeAchievement(a);
       autoPrestiged.push({ achievement: a, count: achievementPrestige[a.id] || 1, xpAwarded });
@@ -4723,7 +4727,7 @@ function showNextCelebration() {
     overlay.innerHTML = `
       <div class="celebration-card" style="padding-top:96px">
         <img src="${CELEBRATION_IMG_PRESTIGE_BATCH}" alt="" class="achievement-badge-pop" />
-        <div class="celebration-title">Flera prestige på en gång!</div>
+        <div class="celebration-title">Flera prestige på samma gång!</div>
         <div class="celebration-sub" style="margin-bottom:6px">${item.items.length} prestationer klarade igen</div>
         <div style="max-height:240px;overflow-y:auto;text-align:left;margin-bottom:10px">${rowsHTML}</div>
         <div class="celebration-xp" style="color:${tabColors.stats}">+${totalXp} XP totalt</div>
@@ -6166,16 +6170,13 @@ function isAutoPrestigeEligible(a) {
   return false;
 }
 
-function autoPrestigeAchievement(a) {
-  achievementPrestige[a.id] = (achievementPrestige[a.id] || 0) + 1;
-  saveAchievementPrestige();
-  // Att prestigea en redan klarad prestation ger nu bara halva XP:et
-  // jämfört med den ursprungliga upplåsningen - varje gång, inte
-  // avtagande ytterligare. Kändes för lätt att få fullt XP igen och
-  // igen.
-  const xpAwarded = Math.round(a.xp * 0.5);
-  prestigeXp += xpAwarded;
-  savePrestigeXp();
+// Sätter startpunkten för framtida prestige-räkning för en prestation -
+// används både n\u00e4r den prestigeas (r\u00e4knar fr\u00e5n den nya, h\u00f6gre punkten)
+// och n\u00e4r den l\u00e5ses upp allra f\u00f6rsta g\u00e5ngen (annars skulle den annars
+// kunna verka "redan klar f\u00f6r prestige igen" direkt vid n\u00e4sta omr\u00e4kning,
+// trots att ingen ny tr\u00e4ning hunnit l\u00e4ggas till sedan den first l\u00e5stes
+// upp).
+function establishPrestigeBaseline(a) {
   if (COLLECTION_PRESTIGE_IDS.has(a.id)) {
     prestigeConsumedIds[a.id] = workoutEntries.map((e) => e.id);
     savePrestigeConsumedIds();
@@ -6194,6 +6195,18 @@ function autoPrestigeAchievement(a) {
     }
     savePrestigeBaseline();
   }
+}
+function autoPrestigeAchievement(a) {
+  achievementPrestige[a.id] = (achievementPrestige[a.id] || 0) + 1;
+  saveAchievementPrestige();
+  // Att prestigea en redan klarad prestation ger nu bara halva XP:et
+  // jämfört med den ursprungliga upplåsningen - varje gång, inte
+  // avtagande ytterligare. Kändes för lätt att få fullt XP igen och
+  // igen.
+  const xpAwarded = Math.round(a.xp * 0.5);
+  prestigeXp += xpAwarded;
+  savePrestigeXp();
+  establishPrestigeBaseline(a);
   return xpAwarded;
 }
 
