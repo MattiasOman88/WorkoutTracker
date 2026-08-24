@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v414";
+const APP_VERSION = "v415";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -296,8 +296,8 @@ function getISOWeek(dateStr) {
 function fmtMinutes(mins) {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} tim`;
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}t`;
   return `${h}t ${m}min`;
 }
 
