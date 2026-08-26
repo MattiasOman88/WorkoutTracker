@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v418";
+const APP_VERSION = "v419";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -442,8 +442,7 @@ const PROFILE_FRAMES = {
   eldringJakt: { label: "Eldring-jakt", type: "jaktChase", color: "#E24B4A", color2: "#EF9F27" },
   frostringJakt: { label: "Frostring-jakt", type: "jaktChase", color: "#2DE0FF", color2: "#C8F0FF" },
   eldFrostCombo: { label: "Eld (långsam) + Frost (snabb)", type: "eldFrostCombo" },
-  pinball: { label: "Flipperboll", type: "pinball", color: "#F5A623" },
-  pinballComet: { label: "Flipperkomet", type: "pinballComet", color: "#7FD4FF" },
+  pinballComet: { label: "Flipperboll", type: "pinball", color: "#7FD4FF" },
   pinballDuo: { label: "Dubbelflipper", type: "pinballDuo" },
   ninjaStarsRGB: { label: "Ninjastjärnor", type: "ninjaStarsRGB" },
   allaMinaRamar: { label: "Alla animationer", type: "cycleAll" },
@@ -458,7 +457,7 @@ const PROFILE_FRAME_UNLOCK_LEVEL = {
   fireRing: 30, frostRing: 35, sonarRainbow: 40, glitterRainbow: 45,
   chaseDotsRainbow: 50, chaseDotsRainbow5: 55, dualComet: 60, dualCometRainbow: 65, rainbow: 70,
   cometJaktLilaRosa: 75, diamantJakt: 80, silverGuldDiamant: 85,
-  eldringJakt: 90, frostringJakt: 95, eldFrostCombo: 100, pinball: 105, pinballComet: 110, pinballDuo: 115, ninjaStarsRGB: 120, allaMinaRamar: 125,
+  eldringJakt: 90, frostringJakt: 95, eldFrostCombo: 100, pinballComet: 105, pinballDuo: 110, ninjaStarsRGB: 115, allaMinaRamar: 120,
 };
 // Migrering av äldre/borttagna nycklar till sina närmaste nya motsvarigheter,
 // så ingen tappar sitt val bara för att katalogen ändrats.
@@ -527,7 +526,6 @@ function profileFrameWrapStyle(frameKey, padding, shape) {
   if (f.type === "fullShift") return { className: "avatar-frame-fullshift" + shapeClass, style: base };
   if (f.type === "eldFrostCombo") return { className: "avatar-frame-eldfrostcombo" + shapeClass, style: base };
   if (f.type === "pinball") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.5)}` };
-  if (f.type === "pinballComet") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.5)}` };
   if (f.type === "pinballDuo") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid #A8ADB8;box-shadow:0 0 8px rgba(168,173,184,0.4)` };
   if (f.type === "ninjaStarsRGB") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid #A8ADB8;box-shadow:0 0 8px rgba(168,173,184,0.4)` };
   if (f.type === "cycleAll") return { className: "avatar-frame-cycleall" + shapeClass, style: base };
@@ -563,11 +561,7 @@ function profileAvatarHTML(size, padding) {
 // ramen dyker upp.
 function pinballExtraForFrame(frameKey, shape) {
   const shapeAttr = ` data-pinball-shape="${shape === "octagon" ? "octagon" : "circle"}"`;
-  if (frameKey === "pinball") return { attrs: ` data-pinball-type="single"${shapeAttr}`, html: `<span class="pinball-ball"></span>` };
-  if (frameKey === "pinballComet") {
-    const trail = Array.from({ length: 6 }).map((_, i) => `<span class="pinball-comet-trail" data-trail-index="${i}"></span>`).join("");
-    return { attrs: ` data-pinball-type="comet"${shapeAttr}`, html: `${trail}<span class="pinball-comet-head"></span>` };
-  }
+  if (frameKey === "pinballComet") return { attrs: ` data-pinball-type="single"${shapeAttr}`, html: `<span class="pinball-comet-head"></span>` };
   if (frameKey === "pinballDuo") return { attrs: ` data-pinball-type="duo"${shapeAttr}`, html: `<span class="pinball-ball pinball-ball-a"></span><span class="pinball-ball pinball-ball-b"></span>` };
   if (frameKey === "ninjaStarsRGB") return { attrs: ` data-pinball-type="ninja3"${shapeAttr}`, html: `<span class="ninja-star ninja-star-r"></span><span class="ninja-star ninja-star-g"></span><span class="ninja-star ninja-star-b"></span>` };
   return { attrs: "", html: "" };
@@ -581,7 +575,7 @@ const FRAME_EFFECT_KEYS = [
   "sonarRainbow", "glitterRainbow", "chaseDotsRainbow", "chaseDotsRainbow5",
   "dualComet", "dualCometRainbow", "rainbow",
   "cometJaktLilaRosa", "diamantJakt", "silverGuldDiamant", "eldringJakt", "frostringJakt", "eldFrostCombo",
-  "pinball", "pinballComet", "pinballDuo", "ninjaStarsRGB", "allaMinaRamar",
+  "pinballComet", "pinballDuo", "ninjaStarsRGB", "allaMinaRamar",
 ];
 // "Alla animationer" - cyklar genom ett fritt urval av tidigare upplåsta ramar
 // (inget min/max - allt från 1 till alla). profile.cycleFrameKeys sparar
@@ -626,6 +620,14 @@ function initCycleAllFrames() {
       const swatch = profileFrameWrapStyle(key, padding, shape);
       el.className = swatch.className;
       el.setAttribute("style", swatch.style);
+      // Rena CSS-animationer (roterande ramar som dubbelkomet, jakt-ringarna
+      // m.fl.) garanteras inte alltid starta om rent fr\u00e5n sin definierade
+      // 0%-vinkel bara f\u00f6r att klassen byts - webbl\u00e4saren kan i vissa fall
+      // l\u00e5ta animationen "forts\u00e4tta" fr\u00e5n en godtycklig fas ist\u00e4llet, vilket
+      // syntes som att t.ex. dubbelkometen kunde b\u00f6rja p\u00e5 fel vinkel n\u00e4r
+      // cykeln bytte till den. Tvingar fram en riktig reflow s\u00e5 animationen
+      // garanterat b\u00f6rjar om fr\u00e5n b\u00f6rjan varje g\u00e5ng.
+      void el.offsetWidth;
       // Flipper-varianterna behöver extra element i DOM:en (inte bara
       // klass/stil som de andra) - lägg till/ta bort dem efter behov när
       // cykeln snurrar in eller ut ur en sådan ram.
@@ -774,28 +776,11 @@ function pinballTick() {
     const isOctagon = el.getAttribute("data-pinball-shape") === "octagon";
     const posFn = isOctagon ? pinballOctagonPositionAtTime : pinballPositionAtTime;
     if (type === "single") {
-      const ball = el.querySelector(".pinball-ball");
+      const ball = el.querySelector(".pinball-ball, .pinball-comet-head");
       if (!ball) return;
       const pos = posFn(now);
       ball.style.left = pos.x + "%";
       ball.style.top = pos.y + "%";
-    } else if (type === "comet") {
-      const head = el.querySelector(".pinball-comet-head");
-      const trails = el.querySelectorAll(".pinball-comet-trail");
-      if (!head) return;
-      const headPos = posFn(now);
-      head.style.left = headPos.x + "%";
-      head.style.top = headPos.y + "%";
-      trails.forEach((trailEl) => {
-        const i = parseInt(trailEl.dataset.trailIndex, 10) + 1;
-        const pos = posFn(now - i * 45);
-        trailEl.style.left = pos.x + "%";
-        trailEl.style.top = pos.y + "%";
-        const sizePct = Math.max(2, 9 - i * 1.1);
-        trailEl.style.width = sizePct + "%";
-        trailEl.style.height = sizePct + "%";
-        trailEl.style.opacity = String(Math.max(0, 0.65 - i * 0.1));
-      });
     } else if (type === "duo") {
       const a = el.querySelector(".pinball-ball-a");
       const b = el.querySelector(".pinball-ball-b");
