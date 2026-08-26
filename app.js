@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v416";
+const APP_VERSION = "v417";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -445,8 +445,8 @@ const PROFILE_FRAMES = {
   pinball: { label: "Flipperboll", type: "pinball", color: "#F5A623" },
   pinballComet: { label: "Flipperkomet", type: "pinballComet", color: "#7FD4FF" },
   pinballDuo: { label: "Dubbelflipper", type: "pinballDuo" },
-  ninjaStar: { label: "Ninjastjärna", type: "ninjaStar", color: "#C0C4CC" },
   ninjaStars3: { label: "Ninjastjärnor (3)", type: "ninjaStars3", color: "#C0C4CC" },
+  ninjaStarsRGB: { label: "Ninjastjärnor (RGB)", type: "ninjaStarsRGB" },
   allaMinaRamar: { label: "Alla animationer", type: "cycleAll" },
 };
 // Nivå 1-50 är de befintliga effekterna, de fem första bara 1 steg isär så de
@@ -459,7 +459,7 @@ const PROFILE_FRAME_UNLOCK_LEVEL = {
   fireRing: 30, frostRing: 35, sonarRainbow: 40, glitterRainbow: 45,
   chaseDotsRainbow: 50, chaseDotsRainbow5: 55, dualComet: 60, dualCometRainbow: 65, rainbow: 70,
   cometJaktLilaRosa: 75, diamantJakt: 80, silverGuldDiamant: 85,
-  eldringJakt: 90, frostringJakt: 95, eldFrostCombo: 100, pinball: 105, pinballComet: 110, pinballDuo: 115, ninjaStar: 120, ninjaStars3: 125, allaMinaRamar: 130,
+  eldringJakt: 90, frostringJakt: 95, eldFrostCombo: 100, pinball: 105, pinballComet: 110, pinballDuo: 115, ninjaStars3: 120, ninjaStarsRGB: 125, allaMinaRamar: 130,
 };
 // Migrering av äldre/borttagna nycklar till sina närmaste nya motsvarigheter,
 // så ingen tappar sitt val bara för att katalogen ändrats.
@@ -530,7 +530,8 @@ function profileFrameWrapStyle(frameKey, padding, shape) {
   if (f.type === "pinball") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.5)}` };
   if (f.type === "pinballComet") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.5)}` };
   if (f.type === "pinballDuo") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid #A8ADB8;box-shadow:0 0 8px rgba(168,173,184,0.4)` };
-  if (f.type === "ninjaStar" || f.type === "ninjaStars3") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.4)}` };
+  if (f.type === "ninjaStars3") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid ${f.color};box-shadow:0 0 8px ${hexToRgba(f.color, 0.4)}` };
+  if (f.type === "ninjaStarsRGB") return { className: "avatar-frame-pinball" + shapeClass, style: `${base};border:2px solid #A8ADB8;box-shadow:0 0 8px rgba(168,173,184,0.4)` };
   if (f.type === "cycleAll") return { className: "avatar-frame-cycleall" + shapeClass, style: base };
   return { className: "" + (isOctagon ? "frame-shape-octagon" : ""), style: `${base};background:${f.color};${isOctagon ? `filter:drop-shadow(0 0 5px ${f.glow})` : `box-shadow:0 0 10px ${f.glow}`}` };
 }
@@ -570,8 +571,8 @@ function pinballExtraForFrame(frameKey, shape) {
     return { attrs: ` data-pinball-type="comet"${shapeAttr}`, html: `${trail}<span class="pinball-comet-head"></span>` };
   }
   if (frameKey === "pinballDuo") return { attrs: ` data-pinball-type="duo"${shapeAttr}`, html: `<span class="pinball-ball pinball-ball-a"></span><span class="pinball-ball pinball-ball-b"></span>` };
-  if (frameKey === "ninjaStar") return { attrs: ` data-pinball-type="ninja1"${shapeAttr}`, html: `<span class="ninja-star"></span>` };
   if (frameKey === "ninjaStars3") return { attrs: ` data-pinball-type="ninja3"${shapeAttr}`, html: `<span class="ninja-star"></span><span class="ninja-star"></span><span class="ninja-star"></span>` };
+  if (frameKey === "ninjaStarsRGB") return { attrs: ` data-pinball-type="ninja3"${shapeAttr}`, html: `<span class="ninja-star ninja-star-r"></span><span class="ninja-star ninja-star-g"></span><span class="ninja-star ninja-star-b"></span>` };
   return { attrs: "", html: "" };
 }
 // De 10 animerade "special"-effekterna - delas mellan profilramen och
@@ -583,7 +584,7 @@ const FRAME_EFFECT_KEYS = [
   "sonarRainbow", "glitterRainbow", "chaseDotsRainbow", "chaseDotsRainbow5",
   "dualComet", "dualCometRainbow", "rainbow",
   "cometJaktLilaRosa", "diamantJakt", "silverGuldDiamant", "eldringJakt", "frostringJakt", "eldFrostCombo",
-  "pinball", "pinballComet", "pinballDuo", "ninjaStar", "ninjaStars3", "allaMinaRamar",
+  "pinball", "pinballComet", "pinballDuo", "ninjaStars3", "ninjaStarsRGB", "allaMinaRamar",
 ];
 // "Alla animationer" - cyklar genom ett fritt urval av tidigare upplåsta ramar
 // (inget min/max - allt från 1 till alla). profile.cycleFrameKeys sparar
@@ -807,7 +808,7 @@ function pinballTick() {
       a.style.top = pos.ay + "%";
       b.style.left = pos.bx + "%";
       b.style.top = pos.by + "%";
-    } else if (type === "ninja1" || type === "ninja3") {
+    } else if (type === "ninja3") {
       const stars = el.querySelectorAll(".ninja-star");
       const total = stars.length;
       stars.forEach((star, i) => {
