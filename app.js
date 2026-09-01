@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v419";
+const APP_VERSION = "v420";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -5531,8 +5531,6 @@ const WEEKLY_CHALLENGE_POOL = {
       check: () => weeklyMisc.levelThemeChangedWeek === mondayOf(todayISO()) },
     { id: "ot_icon_size", title: "Testa ikonstorlek", desc: "Byt mellan mindre och större ikoner i flikraden under Inställningar.",
       check: () => weeklyMisc.iconSizeChangedWeek === mondayOf(todayISO()) },
-    { id: "ot_badge_color", title: "Ny bakgrundsfärg", desc: "Byt bakgrundsfärgen bakom flik-bilderna under Inställningar.",
-      check: () => weeklyMisc.badgeColorChangedWeek === mondayOf(todayISO()) },
     { id: "ot_edit_pass_other", title: "Redigera ett pass", desc: "Redigera ett redan loggat träningspass denna vecka.",
       check: () => weeklyMisc.workoutEditedWeek === mondayOf(todayISO()) },
     { id: "ot_open_profile", title: "Kolla din profil", desc: "Öppna din profil denna vecka.",
@@ -5567,7 +5565,7 @@ function loadWeeklyMisc() {
     tabColorChangedWeek: null, calorieGoalSetWeek: null, themeChangedWeek: null,
     achievementsExploredWeek: null, backupExportedWeek: null, newPresetAddedWeek: null,
     levelThemeChangedWeek: null, workoutEditedWeek: null, profileOpenedWeek: null,
-    iconSizeChangedWeek: null, badgeColorChangedWeek: null,
+    iconSizeChangedWeek: null,
   };
 }
 function saveWeeklyMisc() {
