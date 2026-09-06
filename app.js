@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v420";
+const APP_VERSION = "v421";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -15093,6 +15093,9 @@ function openWeeklyChallengeSummaryModal() {
 function openMonthRecapModal(monthKey) {
   pushModalHistoryIfNeeded();
   const monthEntries = workoutEntries.filter((e) => e.date.slice(0, 7) === monthKey && isTraining(e));
+  const monthHealthEntries = workoutEntries.filter((e) => e.date.slice(0, 7) === monthKey && (e.type === "Sjuk" || e.type === "Skadad"));
+  const monthSickCount = monthHealthEntries.filter((e) => e.type === "Sjuk").length;
+  const monthInjuredCount = monthHealthEntries.filter((e) => e.type === "Skadad").length;
   const totalMinutes = monthEntries.reduce((s, e) => s + e.minutes, 0);
   const catStats = [
     { label: "🥋 Kampsport", filter: isMartialArts },
@@ -15139,6 +15142,12 @@ function openMonthRecapModal(monthKey) {
         ${bestDay ? `
           <div class="card" style="background:var(--bg)">
             <div class="goal-row"><span class="goal-label">🔥 Mest aktiva dagen</span><span class="goal-value">${fmtDateWithWeekday(bestDay.date)} (${bestDay.count} pass)</span></div>
+          </div>
+        ` : ""}
+        ${(monthSickCount > 0 || monthInjuredCount > 0) ? `
+          <div class="card" style="background:var(--bg)">
+            ${monthSickCount > 0 ? `<div class="goal-row"><span class="goal-label">😷 Sjuk</span><span class="goal-value" style="color:${HEALTH_TYPES.find((t) => t.key === "Sjuk").color}">${monthSickCount} ${monthSickCount === 1 ? "dag" : "dagar"}</span></div>` : ""}
+            ${monthInjuredCount > 0 ? `<div class="goal-row"><span class="goal-label">🤕 Skadad</span><span class="goal-value" style="color:${HEALTH_TYPES.find((t) => t.key === "Skadad").color}">${monthInjuredCount} ${monthInjuredCount === 1 ? "dag" : "dagar"}</span></div>` : ""}
           </div>
         ` : ""}
         ${weightChange !== null ? `
@@ -15275,6 +15284,9 @@ function openYearReviewModal() {
   const currentYear = new Date().getFullYear();
   const yearE = workoutEntries.filter((e) => e.date.slice(0, 4) === String(currentYear));
   const yearTrainingE = yearE.filter((e) => !isHealth(e));
+  const yearHealthE = yearE.filter(isHealth);
+  const yearSickCount = yearHealthE.filter((e) => e.type === "Sjuk").length;
+  const yearInjuredCount = yearHealthE.filter((e) => e.type === "Skadad").length;
   const totalMinutes = yearTrainingE.reduce((s, e) => s + e.minutes, 0);
 
   const countByType = {};
@@ -15368,6 +15380,8 @@ function openYearReviewModal() {
           ${topType ? `<div class="goal-row"><span class="goal-label">Vanligaste passet</span><span class="goal-value" style="color:${typeMeta(topType).color}">${typeMeta(topType).label} (${countByType[topType]}×)</span></div>` : ""}
           <div class="goal-row"><span class="goal-label">Bästa veckan</span><span class="goal-value">${peakWeekCount} pass</span></div>
           <div class="goal-row"><span class="goal-label">Längsta streak 🔥</span><span class="goal-value">${longestStreak} ${longestStreak === 1 ? "dag" : "dagar"}</span></div>
+          ${yearSickCount > 0 ? `<div class="goal-row"><span class="goal-label">😷 Sjuk</span><span class="goal-value" style="color:${HEALTH_TYPES.find((t) => t.key === "Sjuk").color}">${yearSickCount} ${yearSickCount === 1 ? "dag" : "dagar"}</span></div>` : ""}
+          ${yearInjuredCount > 0 ? `<div class="goal-row"><span class="goal-label">🤕 Skadad</span><span class="goal-value" style="color:${HEALTH_TYPES.find((t) => t.key === "Skadad").color}">${yearInjuredCount} ${yearInjuredCount === 1 ? "dag" : "dagar"}</span></div>` : ""}
           ${longest ? `<div class="goal-row"><span class="goal-label">Längsta passet</span><span class="goal-value" style="color:${typeMeta(longest.type).color}">${fmtMinutes(longest.minutes)} (${typeMeta(longest.type).label})</span></div>` : ""}
           ${shortest ? `<div class="goal-row"><span class="goal-label">Kortaste passet</span><span class="goal-value" style="color:${typeMeta(shortest.type).color}">${fmtMinutes(shortest.minutes)} (${typeMeta(shortest.type).label})</span></div>` : ""}
           ${weightDelta !== null ? `<div class="goal-row"><span class="goal-label">Viktförändring i år</span><span class="goal-value" style="color:${weightDelta > 0 ? "#E8834A" : weightDelta < 0 ? "#4CAF7D" : "var(--text)"}">${weightDelta > 0 ? "+" : ""}${weightDelta} kg</span></div>` : ""}
