@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v421";
+const APP_VERSION = "v422";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -2877,13 +2877,24 @@ function wireWeightHistoryCardEvents() {
       weightEntries = weightEntries.filter((e) => e.id !== btn.dataset.delWeight);
       persistWeights();
       vibrate(10);
+      // renderVikt() bygger om HELA fliken (inte bara historiklistan, eftersom
+      // en borttagning kan p\u00e5verka "senast loggad"-kortet, grafen och streaken
+      // ocks\u00e5) - vilket annars nollst\u00e4ller scroll-positionen till toppen.
+      // Sparar och \u00e5terst\u00e4ller den runt omritningen ist\u00e4llet, samma m\u00f6nster
+      // som redan anv\u00e4nds f\u00f6r modal-omritningar p\u00e5 andra st\u00e4llen i appen.
+      const scrollTop = content.scrollTop;
       renderVikt();
+      content.scrollTop = scrollTop;
       if (removed) {
         showUndoToast(`${removed.value} kg borttagen`, () => {
           weightEntries.push(removed);
           weightEntries.sort((a, b) => a.date.localeCompare(b.date));
           persistWeights();
-          if (activeTab === "vikt") renderVikt();
+          if (activeTab === "vikt") {
+            const scrollTop2 = content.scrollTop;
+            renderVikt();
+            content.scrollTop = scrollTop2;
+          }
         });
       }
     });
@@ -2899,6 +2910,7 @@ function renderVikt() {
   const latest = weightEntries[weightEntries.length - 1];
   const prev = weightEntries[weightEntries.length - 2];
   const diff = latest && prev ? +(latest.value - prev.value).toFixed(1) : null;
+  const weightStreak = computeWeightStreak();
 
   const periodDef = WEIGHT_PERIOD_OPTIONS.find((p) => p.key === weightChartPeriod) || WEIGHT_PERIOD_OPTIONS[1];
   let periodEntries;
@@ -2916,7 +2928,10 @@ function renderVikt() {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div class="card-label" style="margin-bottom:0">${todayEntry ? "Uppdatera dagens vikt" : "Logga dagens vikt"}</div>
-        <button id="manageWeightBtn" style="background:none;border:none;color:${tabColors.vikt};font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;padding:4px">Hantera</button>
+        <div style="display:flex;align-items:center;gap:12px">
+          ${weightStreak > 0 ? `<span class="streak-badge-weight">⚖️ ${weightStreak} ${weightStreak === 1 ? "dag" : "dagar"}</span>` : ""}
+          <button id="manageWeightBtn" style="background:none;border:none;color:${tabColors.vikt};font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;padding:4px">Hantera</button>
+        </div>
       </div>
       <div class="row">
         <input type="date" id="weightDate" value="${weightFormDraft.date || todayISO()}" />
@@ -3053,6 +3068,18 @@ function computeStreak() {
   let cursor = todayISO();
   if (!trainingDates.has(cursor)) cursor = addDays(cursor, -1);
   while (trainingDates.has(cursor)) {
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
+
+function computeWeightStreak() {
+  const weightDates = new Set(weightEntries.map((e) => e.date));
+  let streak = 0;
+  let cursor = todayISO();
+  if (!weightDates.has(cursor)) cursor = addDays(cursor, -1);
+  while (weightDates.has(cursor)) {
     streak++;
     cursor = addDays(cursor, -1);
   }
