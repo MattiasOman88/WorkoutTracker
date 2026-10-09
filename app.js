@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v422";
+const APP_VERSION = "v423";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -1890,7 +1890,18 @@ const DEFAULT_GYM_EXERCISES = {
   ],
 };
 function normalizeGymExercise(ex) {
-  return { defaultSets: 3, defaultReps: 12, ...ex };
+  return { defaultSets: 3, ...ex };
+}
+let gymStandardReps = (() => {
+  try { const v = parseInt(localStorage.getItem("gym_standard_reps_v1"), 10); return isNaN(v) || v < 1 ? null : v; } catch (e) { return null; }
+})();
+function setGymStandardReps(v) {
+  gymStandardReps = v;
+  try { if (v == null) localStorage.removeItem("gym_standard_reps_v1"); else localStorage.setItem("gym_standard_reps_v1", String(v)); } catch (e) {}
+}
+function repsForNewSet(exDef) {
+  if (exDef && exDef.defaultReps != null) return exDef.defaultReps;
+  return gymStandardReps != null ? gymStandardReps : null;
 }
 function loadGymExercises() {
   let data;
@@ -2132,7 +2143,7 @@ function bestSetForExercise(exerciseName) {
 function startGymSession(splitId) {
   const exercises = exercisesForSplit(splitId).filter((e) => e.enabled).map((e) => {
     const setCount = e.defaultSets || 3;
-    const reps = e.defaultReps != null ? e.defaultReps : 12;
+    const reps = repsForNewSet(e);
     return {
       exerciseId: e.id,
       name: e.name,
@@ -7928,6 +7939,14 @@ function gymSessionViewHTML() {
       </div>
     </div>
 
+    <div class="card" style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">Standard reps</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Fyller i alla tomma reps</div>
+      </div>
+      <input type="number" inputmode="numeric" min="1" id="gymStandardRepsInput" placeholder="t.ex. 12" value="${gymStandardReps != null ? gymStandardReps : ""}" enterkeyhint="done" style="width:80px;text-align:center" />
+    </div>
+
     ${s.exercises.map((ex, exIdx) => {
       const lastEx = lastSession ? lastSession.exercises.find((le) => le.name === ex.name) : null;
       const best = bestSetForExercise(ex.name);
@@ -7992,6 +8011,25 @@ function wireGymSessionViewEvents() {
       renderTraning();
     });
   }
+  const stdInput = document.getElementById("gymStandardRepsInput");
+  if (stdInput) {
+    const applyStd = () => {
+      const n = parseInt(stdInput.value, 10);
+      const v = isNaN(n) || n < 1 ? null : n;
+      setGymStandardReps(v);
+      if (v == null) return;
+      activeGymSession.exercises.forEach((ex, exIdx) => ex.sets.forEach((set, setIdx) => {
+        if (set.reps == null) {
+          set.reps = v;
+          const inp = content.querySelector(`[data-set-reps="${exIdx}:${setIdx}"]`);
+          if (inp) inp.value = v;
+        }
+      }));
+      saveActiveGymSession();
+    };
+    stdInput.addEventListener("input", applyStd);
+    stdInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); stdInput.blur(); } });
+  }
   content.querySelectorAll("[data-set-weight]").forEach((input) => {
     input.addEventListener("input", (e) => {
       const [exIdx, setIdx] = input.dataset.setWeight.split(":").map(Number);
@@ -8036,8 +8074,8 @@ function wireGymSessionViewEvents() {
     btn.addEventListener("click", () => {
       const exIdx = parseInt(btn.dataset.addSet, 10);
       const ex = activeGymSession.exercises[exIdx];
-      const lastReps = ex.sets.length ? ex.sets[ex.sets.length - 1].reps : 12;
-      ex.sets.push({ weight: null, reps: lastReps != null ? lastReps : 12 });
+      const lastReps = ex.sets.length ? ex.sets[ex.sets.length - 1].reps : null;
+      ex.sets.push({ weight: null, reps: lastReps != null ? lastReps : gymStandardReps });
       saveActiveGymSession();
       renderTraning();
     });
@@ -8055,7 +8093,7 @@ function wireGymSessionViewEvents() {
       const exDef = exercisesForSplit(activeGymSession.splitId).find((e) => e.id === btn.dataset.addExercise);
       if (!exDef) return;
       const setCount = exDef.defaultSets || 3;
-      const reps = exDef.defaultReps != null ? exDef.defaultReps : 12;
+      const reps = repsForNewSet(exDef);
       activeGymSession.exercises.push({ exerciseId: exDef.id, name: exDef.name, sets: Array.from({ length: setCount }, () => ({ weight: null, reps })) });
       saveActiveGymSession();
       renderTraning();
@@ -8067,7 +8105,7 @@ function wireGymSessionViewEvents() {
       const input = document.getElementById("customExerciseInput");
       const name = input.value.trim();
       if (!name) { input.focus(); return; }
-      activeGymSession.exercises.push({ exerciseId: null, name, sets: [{ weight: null, reps: 12 }, { weight: null, reps: 12 }, { weight: null, reps: 12 }] });
+      activeGymSession.exercises.push({ exerciseId: null, name, sets: [0, 1, 2].map(() => ({ weight: null, reps: gymStandardReps })) });
       saveActiveGymSession();
       renderTraning();
     });
@@ -13617,7 +13655,11 @@ function renderGymExercisesManagement() {
   const container = document.getElementById("gymExercisesManagement");
   if (!container) return;
   gymSplits.forEach((split) => { SETTINGS_LIST_RENDERERS[`gymExercises_${split.id}`] = renderGymExercisesManagement; });
-  container.innerHTML = gymSplits.filter((g) => g.enabled).map((split) => {
+  container.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">
+      <span style="flex:1">Standard reps (för övningar utan egna reps)</span>
+      <input type="number" inputmode="numeric" min="1" id="gymStandardRepsSettings" value="${gymStandardReps != null ? gymStandardReps : ""}" placeholder="–" style="width:56px;text-align:center;background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;padding:5px" />
+    </div>` + gymSplits.filter((g) => g.enabled).map((split) => {
     const listKey = `gymExercises_${split.id}`;
     const expanded = !!settingsListExpanded[listKey];
     const list = exercisesForSplit(split.id);
@@ -13638,7 +13680,7 @@ function renderGymExercisesManagement() {
               <input type="number" inputmode="numeric" min="1" data-gymex-sets="${split.id}:${i}" value="${ex.defaultSets}" style="width:44px;text-align:center;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px" />
             </label>
             <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)">Reps
-              <input type="number" inputmode="numeric" min="1" data-gymex-reps="${split.id}:${i}" value="${ex.defaultReps}" style="width:44px;text-align:center;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px" />
+              <input type="number" inputmode="numeric" min="1" data-gymex-reps="${split.id}:${i}" value="${ex.defaultReps != null ? ex.defaultReps : ""}" placeholder="${gymStandardReps != null ? gymStandardReps : ""}" style="width:44px;text-align:center;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;padding:3px" />
             </label>
           </div>
         </div>
@@ -13652,6 +13694,12 @@ function renderGymExercisesManagement() {
     return `<div>${html}</div>`;
   }).join("");
   wireCollapsibleListToggles(container);
+  const stdSettings = container.querySelector("#gymStandardRepsSettings");
+  if (stdSettings) stdSettings.addEventListener("input", (e) => {
+    const n = parseInt(e.target.value, 10);
+    setGymStandardReps(isNaN(n) || n < 1 ? null : n);
+    container.querySelectorAll("[data-gymex-reps]").forEach((inp) => { inp.placeholder = gymStandardReps != null ? gymStandardReps : ""; });
+  });
   container.querySelectorAll("[data-gymex-name]").forEach((input) => {
     input.addEventListener("input", (e) => {
       const [splitId, idx] = input.dataset.gymexName.split(":");
@@ -13678,7 +13726,8 @@ function renderGymExercisesManagement() {
     input.addEventListener("input", (e) => {
       const [splitId, idx] = input.dataset.gymexReps.split(":");
       const num = parseInt(e.target.value, 10);
-      gymExercises[splitId][parseInt(idx, 10)].defaultReps = isNaN(num) || num < 1 ? 1 : num;
+      if (isNaN(num) || num < 1) delete gymExercises[splitId][parseInt(idx, 10)].defaultReps;
+      else gymExercises[splitId][parseInt(idx, 10)].defaultReps = num;
       saveGymExercises();
     });
   });
@@ -13697,7 +13746,7 @@ function renderGymExercisesManagement() {
       const name = input.value.trim();
       if (!name) { input.focus(); return; }
       if (!gymExercises[splitId]) gymExercises[splitId] = [];
-      gymExercises[splitId].push({ id: uid(), name, enabled: true, defaultSets: 3, defaultReps: 12 });
+      gymExercises[splitId].push({ id: uid(), name, enabled: true, defaultSets: 3 });
       saveGymExercises();
       renderGymExercisesManagement();
     });
