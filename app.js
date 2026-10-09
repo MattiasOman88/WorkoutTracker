@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v423";
+const APP_VERSION = "v424";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -7942,7 +7942,7 @@ function gymSessionViewHTML() {
     <div class="card" style="display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600">Standard reps</div>
-        <div style="font-size:11.5px;color:var(--muted2)">Fyller i alla tomma reps</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Sätter reps på alla set</div>
       </div>
       <input type="number" inputmode="numeric" min="1" id="gymStandardRepsInput" placeholder="t.ex. 12" value="${gymStandardReps != null ? gymStandardReps : ""}" enterkeyhint="done" style="width:80px;text-align:center" />
     </div>
@@ -8019,11 +8019,9 @@ function wireGymSessionViewEvents() {
       setGymStandardReps(v);
       if (v == null) return;
       activeGymSession.exercises.forEach((ex, exIdx) => ex.sets.forEach((set, setIdx) => {
-        if (set.reps == null) {
-          set.reps = v;
-          const inp = content.querySelector(`[data-set-reps="${exIdx}:${setIdx}"]`);
-          if (inp) inp.value = v;
-        }
+        set.reps = v;
+        const inp = content.querySelector(`[data-set-reps="${exIdx}:${setIdx}"]`);
+        if (inp) inp.value = v;
       }));
       saveActiveGymSession();
     };
