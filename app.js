@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v424";
+const APP_VERSION = "v425";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -8201,9 +8201,9 @@ function renderTraning() {
         <div style="margin-top:12px">
           <div style="font-size:13px;font-weight:700;margin-bottom:2px">${escapeHtml(q.title)}</div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${escapeHtml(q.desc)}</div>
-          <div class="row" style="flex-wrap:wrap;gap:6px">
+          <div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px">
             ${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `
-              <button class="chip" data-rating-q="${q.id}" data-rating-val="${n}" style="padding:6px 10px;${workoutFormState.ratings[q.id] === n ? `border-color:${tabColors.traning};background:${tabColors.traning}26;color:${tabColors.traning}` : ""}">${n}</button>
+              <button class="chip" data-rating-q="${q.id}" data-rating-val="${n}" style="padding:7px 0;min-width:0;width:100%;text-align:center;justify-content:center;${workoutFormState.ratings[q.id] === n ? `border-color:${tabColors.traning};background:${tabColors.traning}26;color:${tabColors.traning}` : ""}">${n}</button>
             `).join("")}
           </div>
         </div>
