@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v425";
+const APP_VERSION = "v426";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -335,6 +335,27 @@ function saveArr(key, arr) {
   }
 }
 
+// Borttagna poster (vikt/pass/kalorier): utan detta lades en borttagen post
+// tillbaka av pull-and-merge (som är additiv) innan nästa push hann ta bort
+// den i molnet. Id:n är unika, så en gemensam mängd räcker. syncTombstones
+// jämför id-listan före/efter varje persist: försvunna id:n markeras som
+// borttagna, återkomna (ångra) avmarkeras.
+const deletedEntryIds = (() => {
+  try { const a = JSON.parse(localStorage.getItem("deleted_entry_ids_v1") || "[]"); return new Set(Array.isArray(a) ? a : []); } catch (e) { return new Set(); }
+})();
+const tombstoneLastIds = {};
+function tombstoneInit(key, arr) { tombstoneLastIds[key] = new Set((arr || []).map((e) => e && e.id)); }
+function syncTombstones(key, arr) {
+  const prev = tombstoneLastIds[key];
+  const cur = new Set((arr || []).map((e) => e && e.id));
+  let changed = false;
+  if (prev) prev.forEach((id) => { if (id != null && !cur.has(id) && !deletedEntryIds.has(id)) { deletedEntryIds.add(id); changed = true; } });
+  cur.forEach((id) => { if (deletedEntryIds.delete(id)) changed = true; });
+  tombstoneLastIds[key] = cur;
+  if (changed) {
+    try { localStorage.setItem("deleted_entry_ids_v1", JSON.stringify(Array.from(deletedEntryIds).slice(-3000))); } catch (e) {}
+  }
+}
 let weightEntries = loadArr("weight_entries").sort((a, b) => a.date.localeCompare(b.date));
 let workoutEntries = loadArr("workout_entries").sort((a, b) => b.date.localeCompare(a.date));
 // Nyckeln för löpning bytte namn från "Jogging" till "Löpning" (för att vara
@@ -346,8 +367,10 @@ let workoutEntries = loadArr("workout_entries").sort((a, b) => b.date.localeComp
   if (migrated) saveArr("workout_entries", workoutEntries);
 })();
 
-function persistWeights() { saveArr("weight_entries", weightEntries); }
-function persistWorkouts() { saveArr("workout_entries", workoutEntries); }
+tombstoneInit("weight", weightEntries);
+tombstoneInit("workout", workoutEntries);
+function persistWeights() { syncTombstones("weight", weightEntries); saveArr("weight_entries", weightEntries); }
+function persistWorkouts() { syncTombstones("workout", workoutEntries); saveArr("workout_entries", workoutEntries); }
 
 /* ---------------- App state ---------------- */
 
@@ -818,7 +841,8 @@ const pinballObserver = new MutationObserver(() => {
 pinballObserver.observe(document.body, { childList: true, subtree: true });
 
 let calorieLog = loadArr("calorie_log");
-function persistCalorieLog() { saveArr("calorie_log", calorieLog); }
+tombstoneInit("calorie", calorieLog);
+function persistCalorieLog() { syncTombstones("calorie", calorieLog); saveArr("calorie_log", calorieLog); }
 function addDays(iso, days) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + days);
@@ -11144,7 +11168,7 @@ function mergeArrayById(localArr, remoteArr) {
   const remote = Array.isArray(remoteArr) ? remoteArr : [];
   const byId = new Map();
   local.forEach((e) => { if (e && e.id != null) byId.set(e.id, e); });
-  remote.forEach((e) => { if (e && e.id != null && !byId.has(e.id)) byId.set(e.id, e); });
+  remote.forEach((e) => { if (e && e.id != null && !byId.has(e.id) && !deletedEntryIds.has(e.id)) byId.set(e.id, e); });
   return Array.from(byId.values());
 }
 // Som mergeArrayById, men för poster utan ett riktigt id-fält - keyFn
