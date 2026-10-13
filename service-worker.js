@@ -1,4 +1,4 @@
-const CACHE_NAME = "traningslogg-v426";
+const CACHE_NAME = "traningslogg-v427";
 const ASSETS = [
   "./index.html",
   "./app.js",
@@ -77,8 +77,11 @@ self.addEventListener("fetch", (event) => {
   const isAppShell = NETWORK_FIRST.some((name) => url.pathname.endsWith(name)) || url.pathname === "/" || url.pathname.endsWith("/");
 
   if (isAppShell) {
+    // cache: "reload" hoppar över webbläsarens HTTP-cache (GitHub Pages
+    // skickar max-age=600, så annars kan gammal app.js serveras i upp till
+    // 10 minuter efter en uppdatering trots network-first).
     event.respondWith(
-      fetch(event.request)
+      fetch(new Request(event.request, { cache: "reload" }))
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
