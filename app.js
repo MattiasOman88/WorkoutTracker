@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v427";
+const APP_VERSION = "v428";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -5423,8 +5423,8 @@ const WEEKLY_CHALLENGE_POOL = {
         const cats = new Set(ids.map((id) => (submissionTypes.find((s) => s.id === id) || {}).category));
         return cats.has("chokes") && cats.has("armlocks") && cats.has("leglocks");
       } },
-    { id: "sub_kneebar_twister_banana", title: "Kneebar, Twister & Banana Split", desc: "Få in Kneebar, Twister och Banana Split denna vecka.",
-      check: () => { const ids = thisWeekSubmissionIds(); return ["kneebar", "twister", "banana_split"].every((id) => ids.includes(id)); } },
+    { id: "sub_kneebar_twister_banana", title: "Kneebar-veckan", desc: "Få in en Kneebar denna vecka.",
+      check: () => thisWeekSubmissionIds().includes("kneebar") },
     { id: "sub_choke_x2", title: "Stryp-veckan", desc: "Få in minst 2 olika stryp-submissions denna vecka.",
       check: () => { const ids = new Set(thisWeekSubmissionIds().filter((id) => (submissionTypes.find((s) => s.id === id) || {}).category === "chokes")); return ids.size >= 2; } },
     { id: "sub_armlock_x2", title: "Armlås-veckan", desc: "Få in minst 2 olika armlås denna vecka.",
