@@ -2,7 +2,7 @@
 
 // Håll i synk med CACHE_NAME i service-worker.js vid varje ny version -
 // visas i Om appen så man snabbt kan se vilken version man faktiskt kör.
-const APP_VERSION = "v428";
+const APP_VERSION = "v429";
 
 const HEALTH_TYPES = [
   { key: "Sjuk", label: "Sjuk", color: "#E8C34D" },
@@ -10029,7 +10029,7 @@ function renderKalorier() {
       </div>
       <div class="field-label" style="margin-bottom:4px">Kalorier förbrukade</div>
       <div class="row" style="flex-wrap:wrap;margin-bottom:10px">
-        ${quickPresets.burned.map((p) => `<button class="chip" data-quick-burned="${p.kcal}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
+        ${quickPresets.burned.map((p, i) => `<button class="chip" data-quick-burned="${p.kcal}" data-quick-burned-idx="${i}" style="${p.color ? `border-color:${p.color};background:${p.color}26;color:${p.color}` : ""}">${escapeHtml(p.label)} ${p.kcal} kcal</button>`).join("")}
       </div>
       <div class="row">
         <input type="number" inputmode="numeric" placeholder="Kcal" id="burnedKcalInput" enterkeyhint="go" style="max-width:160px" />
@@ -10134,6 +10134,35 @@ function renderKalorier() {
     renderKalorier();
   });
 
+  // Håll in en snabbknapp (~0,6 s) för att ta bort den (med ångra).
+  const wireQuickPresetLongPress = (btn, kind, idx) => {
+    let timer = null, fired = false;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    btn.addEventListener("pointerdown", () => {
+      fired = false; cancel();
+      timer = setTimeout(() => {
+        timer = null; fired = true;
+        const removed = quickPresets[kind][idx];
+        if (!removed) return;
+        quickPresets[kind].splice(idx, 1);
+        saveQuickPresets();
+        vibrate(20);
+        renderKalorier();
+        showUndoToast(`Snabbknappen "${removed.label}" borttagen`, () => {
+          quickPresets[kind].splice(Math.min(idx, quickPresets[kind].length), 0, removed);
+          saveQuickPresets();
+          if (activeTab === "kalorier") renderKalorier();
+        });
+      }, 600);
+    });
+    ["pointerup", "pointerleave", "pointercancel", "pointermove"].forEach((ev) => btn.addEventListener(ev, cancel));
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Fånga klicket som följer efter ett långt tryck så knappen inte också loggar kalorier.
+    btn.addEventListener("click", (e) => { if (fired) { e.stopImmediatePropagation(); e.preventDefault(); fired = false; } }, true);
+    btn.style.webkitTouchCallout = "none"; btn.style.userSelect = "none";
+  };
+  content.querySelectorAll("[data-quick-eaten-idx]").forEach((btn) => wireQuickPresetLongPress(btn, "eaten", parseInt(btn.dataset.quickEatenIdx, 10)));
+  content.querySelectorAll("[data-quick-burned-idx]").forEach((btn) => wireQuickPresetLongPress(btn, "burned", parseInt(btn.dataset.quickBurnedIdx, 10)));
   content.querySelectorAll("[data-quick-eaten-idx]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const p = quickPresets.eaten[parseInt(btn.dataset.quickEatenIdx, 10)];
